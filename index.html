@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fff4e6">
+<title>たとえてナラベ！ ― ふーさんと数字をことばで伝えあう協力ゲーム</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🐻%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#fff4e6;--card:#ffffff;--ink:#3a2e2a;--dim:#8a7a70;--coral:#ff6b5b;--coral2:#e8503f;--teal:#17a89b;--teal2:#0f857a;--sun:#ffc94a;--line:#f0dcc6;--pink:#ffb3a7;--sky:#bfe9e4;
+  --font:"Hiragino Maru Gothic ProN","Hiragino Sans","M PLUS Rounded 1c","Noto Sans JP","Noto Sans CJK JP","Yu Gothic UI",Meiryo,system-ui,sans-serif;
+  --num:"Arial Rounded MT Bold","Varela Round","Nunito","Hiragino Maru Gothic ProN",system-ui,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{font-family:var(--font);color:var(--ink);overflow:hidden;background:
+  radial-gradient(circle at 12% 8%,rgba(255,201,74,.35) 0 60px,transparent 61px),
+  radial-gradient(circle at 92% 18%,rgba(23,168,155,.18) 0 46px,transparent 47px),
+  radial-gradient(circle at 85% 92%,rgba(255,107,91,.18) 0 70px,transparent 71px),
+  var(--bg);background-attachment:fixed}
+button{font-family:inherit;cursor:pointer;border:none;color:inherit}
+button:disabled{cursor:default;opacity:.45}
+input{font-family:inherit}
+.screen{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;z-index:2}
+.screen.active{display:flex}
+.col{width:100%;max-width:560px;height:100%;display:flex;flex-direction:column;padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom)}
+.scroll{overflow-y:auto;padding-bottom:24px}
+body.is-host .guestonly{display:none!important}
+body:not(.is-host) .hostonly{display:none!important}
+
+/* ---------- 共通部品 ---------- */
+.box{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:12px;margin:9px 0;box-shadow:0 3px 0 var(--line)}
+.box h2{margin:0 0 8px;font-size:15px;color:var(--coral2);display:flex;align-items:center;gap:6px}
+.hint{font-size:12px;color:var(--dim);margin-top:6px;line-height:1.6}
+input.txt{width:100%;font-size:18px;padding:11px 12px;border-radius:12px;border:2px solid var(--line);background:#fffaf4;color:var(--ink)}
+input.txt:focus{outline:none;border-color:var(--teal)}
+.codein{text-transform:uppercase;letter-spacing:6px;text-align:center;font-weight:900;font-size:24px!important}
+.mainbtn{display:block;width:100%;padding:14px;border-radius:16px;font-size:19px;font-weight:900;color:#fff;letter-spacing:1px;background:var(--coral);box-shadow:0 5px 0 var(--coral2);margin-top:8px}
+.mainbtn:active:not(:disabled){transform:translateY(4px);box-shadow:0 1px 0 var(--coral2)}
+.mainbtn.teal{background:var(--teal);box-shadow:0 5px 0 var(--teal2)}
+.subbtn{display:block;width:100%;padding:11px;border-radius:14px;font-size:15px;font-weight:800;background:#fff;border:2px solid var(--line);margin-top:9px;color:var(--ink)}
+.subbtn:active:not(:disabled){background:#fff1e0}
+.row2{display:flex;gap:8px;margin-top:8px}.row2 .subbtn{margin-top:0;flex:1;padding:10px}
+.dots::after{content:"";animation:dots 1.2s steps(4) infinite}
+@keyframes dots{0%{content:""}25%{content:"・"}50%{content:"・・"}75%{content:"・・・"}}
+.waitmsg{text-align:center;font-weight:800;padding:14px;border-radius:14px;background:#fff;border:2px dashed var(--line);margin-top:8px;color:var(--dim)}
+.tag{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:999px;white-space:nowrap;flex:none}
+.tag.host{background:var(--sun);color:#5a3b00}.tag.you{background:var(--ink);color:#fff}.tag.npc{background:#ffe2c2;color:#8a4b12}
+.tag.off{background:#ddd;color:#555}.tag.on{background:var(--sky);color:#0b5c55}
+
+/* ---------- タイトル ---------- */
+.logo{text-align:center;margin:14px 0 2px}
+.logo .bear{font-size:64px;line-height:1;display:inline-block;filter:drop-shadow(0 4px 0 rgba(0,0,0,.08))}
+.logo h1{margin:4px 0 0;font-size:clamp(36px,11vw,50px);font-weight:900;letter-spacing:1px;line-height:1.1;color:var(--coral);
+  text-shadow:3px 3px 0 #fff,5px 5px 0 var(--sun)}
+.logo h1 span{color:var(--teal)}
+.logo .sub{font-size:14px;font-weight:800;color:var(--ink);margin-top:8px}
+.logo p{margin:6px 0 0;font-size:12.5px;color:var(--dim)}
+.scalebar{position:relative;height:30px;margin:12px 4px 2px;border-radius:999px;background:linear-gradient(90deg,var(--sky),#fff3c4 50%,var(--pink));border:2px solid #fff;box-shadow:0 2px 0 var(--line)}
+.scalebar b{position:absolute;top:50%;transform:translate(-50%,-50%);font-family:var(--num);font-size:12px;background:#fff;border-radius:999px;padding:1px 7px;border:2px solid var(--line)}
+
+/* ---------- ロビー ---------- */
+.codebig{text-align:center;font-size:13px;color:var(--dim);font-weight:700}
+.codebig b{display:block;font-family:var(--num);font-size:46px;letter-spacing:12px;color:var(--teal);line-height:1.1}
+#qr{background:#fff;border-radius:12px;padding:8px;width:150px;height:150px;margin:6px auto;border:2px solid var(--line)}
+#qr svg{width:100%;height:100%;display:block}
+.url{font-size:11.5px;word-break:break-all;background:#fff8ef;padding:6px 8px;border-radius:10px;text-align:center;color:var(--dim)}
+.seat{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:14px;background:#fffaf4;margin-bottom:6px;min-height:46px;border:2px solid var(--line)}
+.av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;flex:none;font-size:15px}
+.seat .nm{flex:1;min-width:0;font-weight:800;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seat.offline{opacity:.5}
+.xbtn{width:30px;height:30px;border-radius:50%;background:#f3e6d8;font-size:16px;font-weight:900;flex:none}
+.opt{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px dashed var(--line);font-weight:800;font-size:14px}
+.opt:last-child{border-bottom:none}
+.seg{display:flex;gap:3px;background:#f6ebde;border-radius:999px;padding:3px;flex:none}
+.seg button{padding:5px 10px;border-radius:999px;font-size:12.5px;font-weight:800;background:transparent;color:var(--dim)}
+.seg button.on{background:#fff;color:var(--coral2);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+body:not(.is-host) .seg button{pointer-events:none}
+.npcbtn{display:flex;gap:8px;margin-top:6px}
+.npcbtn button{flex:1;padding:10px;border-radius:14px;font-weight:900;font-size:14px;background:#fff1e0;border:2px solid #f5c99a;color:#8a4b12}
+
+/* ---------- ゲーム画面 ---------- */
+#game .col{padding-left:10px;padding-right:10px}
+.topbar{display:flex;align-items:center;gap:6px;padding:8px 0 4px;flex:none}
+.pill{font-size:12.5px;font-weight:800;background:#fff;border:2px solid var(--line);padding:3px 9px;border-radius:999px;white-space:nowrap}
+.pill b{font-family:var(--num);font-size:14px;color:var(--teal2)}
+.lives{font-size:17px;letter-spacing:-1px;white-space:nowrap}
+.dead{filter:grayscale(1);opacity:.3}
+.lives.hit{animation:hit .7s}
+@keyframes hit{20%,60%{transform:scale(1.35) rotate(-6deg)}40%{transform:scale(1.2) rotate(6deg)}}
+.iconbtn{padding:4px 10px;border-radius:999px;font-size:13px;font-weight:800;background:#fff;border:2px solid var(--line);white-space:nowrap}
+.spacer{flex:1}
+.gscroll{flex:1 1 auto;min-height:0;overflow-y:auto;padding-bottom:12px}
+#players{display:flex;gap:6px;overflow-x:auto;padding:12px 0 4px;scrollbar-width:none;flex:none}
+.pchip{position:relative;flex:0 0 auto;display:flex;align-items:center;gap:5px;padding:4px 9px 4px 4px;border-radius:999px;background:#fff;border:2px solid var(--line);font-size:12.5px;font-weight:800}
+.pchip .av{width:24px;height:24px;font-size:12px}
+.pchip .cnt{font-family:var(--num);color:var(--dim);font-size:12px}
+.pchip.off{opacity:.5}.pchip.me{border-color:var(--ink)}
+.pchip .rx{font-size:17px;line-height:1;margin-left:1px;animation:rx 2.2s ease-out forwards}
+@keyframes rx{0%{transform:scale(0)}12%{transform:scale(1.4)}25%{transform:scale(1)}85%{opacity:1}100%{opacity:0}}
+#sayFeed{position:fixed;left:50%;transform:translateX(-50%);width:min(536px,calc(100% - 20px));z-index:55;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+.sayit{display:flex;align-items:center;gap:5px;max-width:100%;font-size:12.5px;font-weight:800;background:#fffdf3;border:2px solid var(--sun);border-radius:14px 14px 14px 4px;padding:4px 10px 4px 6px;box-shadow:0 3px 8px rgba(0,0,0,.12);animation:sayin .35s cubic-bezier(.3,1.5,.5,1)}
+.sayit b{flex:none;color:#8a4b12}
+.sayit .st{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sayit.out{opacity:0;transform:translateY(6px);transition:opacity .4s,transform .4s}
+@keyframes sayin{0%{opacity:0;transform:translateY(10px) scale(.9)}100%{opacity:1;transform:none}}
+.chip.talking{animation:talking 1.6s}
+@keyframes talking{25%,60%{background:#fff6d1;border-color:var(--sun)}}
+
+.theme{position:relative;background:#fff;border:2px solid var(--line);border-radius:18px;padding:10px 12px 9px;box-shadow:0 3px 0 var(--line);margin-top:4px}
+.theme .cat{font-size:11.5px;font-weight:800;color:var(--dim)}
+.theme .tt{font-size:19px;font-weight:900;line-height:1.35;margin:1px 0 6px}
+.ends{display:flex;justify-content:space-between;gap:6px;font-size:12px;font-weight:800}
+.ends span{padding:2px 8px;border-radius:999px}
+.ends .lo{background:var(--sky);color:#0b5c55}.ends .hi{background:var(--pink);color:#8b2318}
+.ends .mid{flex:1;align-self:center;height:6px;border-radius:999px;background:linear-gradient(90deg,var(--sky),#fff3c4,var(--pink))}
+
+.mine{display:flex;gap:9px;margin-top:10px;flex-wrap:wrap}
+.mycard{flex:1 1 150px;min-width:0;background:#fff;border:2px solid var(--line);border-radius:18px;padding:8px;display:flex;gap:9px;align-items:center;box-shadow:0 3px 0 var(--line)}
+.bignum{flex:none;width:78px;height:100px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--num);font-weight:900;font-size:44px;color:#fff;
+  background:linear-gradient(160deg,var(--coral),#ff9a6b);box-shadow:inset 0 0 0 3px rgba(255,255,255,.55),0 4px 0 var(--coral2);letter-spacing:-1px}
+.bignum small{font-size:10px;font-family:var(--font);letter-spacing:0;opacity:.9;margin-top:-2px}
+.bignum.next{background:linear-gradient(160deg,var(--teal),#53d0c3);box-shadow:inset 0 0 0 3px rgba(255,255,255,.55),0 4px 0 var(--teal2)}
+.mycard .ex{flex:1;min-width:0}
+.mycard .ex label{font-size:11.5px;font-weight:800;color:var(--dim)}
+.exrow{display:flex;gap:5px;margin-top:3px}
+.exrow input{flex:1;min-width:0;font-size:16px;padding:9px;border-radius:12px;border:2px solid var(--line);background:#fffaf4}
+.exrow input:focus{outline:none;border-color:var(--teal)}
+.exrow button{flex:none;padding:0 11px;border-radius:12px;background:var(--teal);color:#fff;font-weight:900;font-size:14px}
+.exstate{font-size:11px;color:var(--teal2);font-weight:800;min-height:15px;margin-top:2px}
+.mine .done{flex:1 1 100%;text-align:center;font-weight:800;color:var(--dim);padding:10px;border:2px dashed var(--line);border-radius:16px;background:#fff}
+
+.secttl{display:flex;align-items:center;justify-content:space-between;margin:12px 2px 5px;font-size:14px;font-weight:900}
+.secttl small{font-size:11px;color:var(--dim);font-weight:700}
+.board{background:#fff;border:2px solid var(--line);border-radius:18px;padding:8px;box-shadow:0 3px 0 var(--line)}
+.field{display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:2px 2px 8px;border-bottom:2px dashed var(--line);margin-bottom:8px;min-height:30px}
+.field .lbl{font-size:11.5px;font-weight:800;color:var(--dim);margin-right:2px}
+.tile{display:inline-flex;align-items:center;gap:3px;font-family:var(--num);font-weight:900;font-size:16px;padding:3px 8px;border-radius:10px;background:var(--teal);color:#fff;box-shadow:0 2px 0 var(--teal2)}
+.tile.aside{background:#fff;color:var(--coral2);border:2px solid var(--coral);box-shadow:none;text-decoration:line-through}
+.tile.pop{animation:pop .6s cubic-bezier(.3,1.7,.5,1)}
+@keyframes pop{0%{transform:scale(0) rotate(-20deg)}100%{transform:none}}
+.arrow{color:var(--dim);font-size:12px}
+.axis{display:flex;justify-content:space-between;font-size:11px;font-weight:800;color:var(--dim);padding:0 4px 4px}
+.chips{display:flex;flex-direction:column;gap:6px;position:relative}
+.chip{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 4px;border-radius:14px;background:#fffaf4;border:2px solid var(--line);min-height:50px;touch-action:auto;user-select:none;-webkit-user-select:none}
+.chip .grip{flex:none;width:30px;align-self:stretch;display:flex;align-items:center;justify-content:center;color:#c9b29a;font-size:20px;touch-action:none;cursor:grab;border-radius:10px}
+.chip .who{flex:none;display:flex;align-items:center;gap:4px;width:8.2em;min-width:0;font-weight:800;font-size:12px}
+.chip .who span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip .av{width:24px;height:24px;font-size:12px}
+.chip .say{flex:1;min-width:0;font-weight:900;font-size:14.5px;line-height:1.3;word-break:break-all}
+.chip .say.none{color:#c9b29a;font-weight:700;font-size:13px}
+.chip .mynum{flex:none;font-family:var(--num);font-weight:900;font-size:13px;color:#fff;background:var(--coral);border-radius:8px;padding:2px 6px}
+.chip .mv{flex:none;display:flex;flex-direction:column;gap:2px}
+.chip .mv button{width:28px;height:21px;border-radius:7px;background:#f3e6d8;font-size:10px;font-weight:900;color:#8a7a70;padding:0}
+.chip.me{border-color:var(--coral);background:#fff3ef}
+.chip.ref{border-style:dashed;border-color:var(--sun);background:#fffbe8}
+.chip.dragging{position:relative;z-index:5;box-shadow:0 8px 18px rgba(0,0,0,.18);border-color:var(--teal);background:#effffd}
+.chip.moved{animation:moved .8s}
+@keyframes moved{30%{background:#e6fbf8;border-color:var(--teal)}}
+.boardby{font-size:11px;color:var(--dim);text-align:right;margin-top:5px;min-height:14px}
+.refbox{display:flex;gap:6px;align-items:center;margin-top:8px;background:#fffbe8;border:2px dashed var(--sun);border-radius:14px;padding:7px}
+.refbox .tile{background:var(--sun);color:#5a3b00;box-shadow:0 2px 0 #d9a520}
+.refbox .exrow{flex:1;margin:0}
+
+#action{flex:none;background:#fff;border:2px solid var(--line);border-bottom:none;border-radius:20px 20px 0 0;padding:8px 10px calc(9px + env(safe-area-inset-bottom));margin:0 -4px;box-shadow:0 -3px 10px rgba(0,0,0,.05)}
+#status{text-align:center;font-weight:900;font-size:14px;min-height:20px;margin-bottom:6px}
+.playbtn{display:block;width:100%;min-height:54px;border-radius:16px;font-size:18px;font-weight:900;color:#fff;background:var(--coral);box-shadow:0 5px 0 var(--coral2)}
+.playbtn:active:not(:disabled){transform:translateY(4px);box-shadow:0 1px 0 var(--coral2)}
+.playbtn b{font-family:var(--num);font-size:22px}
+.pending{display:none;align-items:center;gap:8px;background:#fff6d9;border:2px solid var(--sun);border-radius:16px;padding:8px}
+.pending.show{display:flex}
+.pending .pt{flex:1;font-weight:900;font-size:14px;line-height:1.35}
+.pending .cd{font-family:var(--num);font-size:26px;font-weight:900;color:var(--coral2);width:34px;text-align:center}
+.pending button{flex:none;padding:10px 12px;border-radius:12px;font-weight:900;font-size:14px;background:var(--ink);color:#fff}
+.reacts{display:flex;gap:4px;margin-top:7px}
+.reacts button{flex:1;font-size:20px;padding:4px 0;border-radius:12px;background:#fff8ef;border:2px solid var(--line)}
+.reacts button:active{transform:scale(.9)}
+.hostbar{display:none;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;background:#fff1e0;border:2px solid #f5c99a;border-radius:12px;padding:6px 8px;margin-bottom:6px;font-size:12.5px;font-weight:800}
+.hostbar.show{display:flex}
+.hostbar button{padding:5px 10px;border-radius:10px;font-weight:900;font-size:12.5px;background:var(--coral);color:#fff}
+
+/* お題選び */
+.cands{display:flex;flex-direction:column;gap:9px}
+.cand{background:#fff;border:2px solid var(--line);border-radius:18px;padding:11px 12px;box-shadow:0 3px 0 var(--line)}
+.cand .tt{font-size:18px;font-weight:900;margin:2px 0 6px;line-height:1.35}
+.cand .cat{font-size:11.5px;font-weight:800;color:var(--dim)}
+.cand .acts{display:flex;gap:6px;margin-top:8px;align-items:center}
+.cand .vote{padding:7px 12px;border-radius:999px;font-weight:900;background:#fff8ef;border:2px solid var(--line);font-size:14px}
+.cand .vote.on{background:#e6fbf8;border-color:var(--teal);color:var(--teal2)}
+.cand .vote .vn{font-family:var(--num);margin-left:3px}
+.cand .voters{flex:1;font-size:11px;color:var(--dim);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.cand .pick{padding:8px 12px;border-radius:12px;font-weight:900;background:var(--teal);color:#fff;font-size:14px}
+.custom input{margin-top:6px;font-size:15px!important;padding:9px!important}
+.custom .two{display:flex;gap:6px}
+
+/* 結果 */
+.rhead{text-align:center;margin:16px 0 4px}
+.rhead .big{font-size:54px;line-height:1}
+.rhead h1{margin:6px 0 2px;font-size:28px;font-weight:900;color:var(--coral)}
+.rhead.lose h1{color:#7a6a60}
+.rhead p{margin:4px 0;font-size:13.5px;color:var(--dim);font-weight:700}
+.revlist{display:flex;flex-direction:column;gap:6px}
+.rev{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:14px;background:#fffaf4;border:2px solid var(--line);opacity:0;transform:translateY(8px)}
+.rev.show{animation:revin .5s forwards}
+@keyframes revin{to{opacity:1;transform:none}}
+.rev .n{flex:none;width:50px;height:50px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:var(--num);font-weight:900;font-size:24px;color:#fff;background:var(--teal);box-shadow:0 3px 0 var(--teal2)}
+.rev.aside .n{background:var(--coral);box-shadow:0 3px 0 var(--coral2)}
+.rev.ref .n{background:var(--sun);color:#5a3b00;box-shadow:0 3px 0 #d9a520}
+.rev .n.flip{animation:flip .55s}
+@keyframes flip{0%{transform:rotateY(90deg)}100%{transform:none}}
+.rev .tx{flex:1;min-width:0}
+.rev .w{font-size:16px;font-weight:900;line-height:1.3;word-break:break-all}
+.rev .w.none{color:#c9b29a;font-size:13px}
+.rev .by{font-size:11.5px;color:var(--dim);font-weight:800;display:flex;gap:6px;align-items:center;margin-top:1px}
+.badge{font-size:10.5px;font-weight:900;padding:1px 6px;border-radius:999px;background:var(--sky);color:#0b5c55}
+.badge.x{background:#ffe0dc;color:var(--coral2)}
+.badge.wow{background:var(--sun);color:#5a3b00;animation:wow 1s 2}
+@keyframes wow{50%{transform:scale(1.15) rotate(-4deg)}}
+.stats{font-size:13.5px;line-height:1.9;font-weight:700}
+.stagelog{border-top:1px dashed var(--line);padding:7px 0}
+.stagelog:first-child{border-top:none}
+.stagelog .h{font-weight:900;font-size:13.5px}
+.stagelog .l{font-size:12.5px;color:var(--dim);line-height:1.7}
+.stagelog .l b{color:var(--ink);font-family:var(--num)}
+
+/* オーバーレイ */
+.overlay{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(58,46,42,.55);backdrop-filter:blur(2px)}
+.overlay.active{display:flex}
+.modal{width:100%;max-width:480px;max-height:88vh;overflow-y:auto;background:#fff;border-radius:22px;padding:18px 16px 16px;border:3px solid var(--line);box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.modal h2{margin:0 0 10px;color:var(--coral2);font-size:20px;text-align:center}
+.modal h3{margin:12px 0 4px;font-size:15px;color:var(--teal2)}
+.modal p,.modal li{font-size:14px;line-height:1.75;margin:2px 0}
+.modal ul{padding-left:1.2em;margin:4px 0}
+#mistake .modal{border-color:var(--coral);text-align:center;animation:shake .5s}
+@keyframes shake{20%,60%{transform:translateX(-8px) rotate(-1deg)}40%,80%{transform:translateX(8px) rotate(1deg)}}
+#mistake .stop{font-size:42px;font-weight:900;color:var(--coral);letter-spacing:2px;line-height:1.1}
+#mistake .played{margin:10px auto 6px;display:inline-flex;align-items:center;gap:8px;font-weight:900}
+#mistake .played .tile{font-size:24px;padding:4px 12px}
+.lowlist{display:flex;flex-direction:column;gap:5px;margin:8px 0}
+.lowrow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:12px;background:#fff3ef;border:2px solid #ffd1ca;text-align:left}
+.lowrow .tile{background:var(--coral);box-shadow:0 2px 0 var(--coral2)}
+.lowrow .w{flex:1;font-weight:900;font-size:14px}
+.lowrow .nm{font-size:11.5px;color:var(--dim);font-weight:800}
+.hearts{font-size:30px;margin:6px 0 2px}
+.hearts span{display:inline-block;animation:heart .9s both}
+@keyframes heart{0%{transform:scale(0)}50%{transform:scale(1.4)}100%{transform:scale(1)}}
+#niceFx{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:61;pointer-events:none;font-size:22px;font-weight:900;color:var(--teal2);background:#fff;border:3px solid var(--teal);border-radius:18px;padding:8px 16px;opacity:0;white-space:nowrap}
+#niceFx.show{animation:nice 1.6s ease-out}
+@keyframes nice{0%{opacity:0;transform:translate(-50%,-30%) scale(.6)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}75%{opacity:1}100%{opacity:0;transform:translate(-50%,-70%)}}
+#banner{position:fixed;top:0;left:0;right:0;z-index:90;background:var(--coral2);color:#fff;text-align:center;font-weight:800;padding:8px 10px;font-size:13px;display:none}
+#banner.show{display:block}
+#toast{position:fixed;bottom:24%;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:14px;z-index:95;display:none;max-width:88%;text-align:center;font-weight:800;font-size:14px}
+#toast.show{display:block}
+.spin{width:46px;height:46px;border-radius:50%;border:5px solid #f3e6d8;border-top-color:var(--coral);margin:6px auto 12px;animation:spinr 1s linear infinite}
+@keyframes spinr{to{transform:rotate(360deg)}}
+.handoff{text-align:center;max-width:420px;background:#fff;border-radius:22px;padding:20px}
+.confetti{position:fixed;top:-12px;width:9px;height:14px;z-index:70;pointer-events:none;animation:fall linear forwards;border-radius:2px}
+@keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}.rev{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div id="banner"></div><div id="toast"></div><div id="niceFx"></div><div id="sayFeed" aria-live="polite"></div>
+
+<!-- ===== タイトル ===== -->
+<section id="title" class="screen active">
+  <div class="col scroll">
+    <div class="logo">
+      <div class="bear">🐻</div>
+      <h1>たとえて<span>ナラベ！</span></h1>
+      <div class="sub">ふーさんと数字をことばで伝えあう協力ゲーム</div>
+      <div class="scalebar"><b style="left:7%">1</b><b style="left:34%">？</b><b style="left:63%">？</b><b style="left:93%">100</b></div>
+      <p>数字は言っちゃダメ。お題にそって「たとえ」て、小さい順に出しきろう！（2〜10人）</p>
+    </div>
+    <div class="box">
+      <h2>🙂 あなたの名前</h2>
+      <input id="nameIn" class="txt" type="text" maxlength="8" placeholder="例：たろう" autocomplete="nickname">
+    </div>
+    <div class="box" id="inviteJoinBox" style="display:none">
+      <div style="text-align:center;font-weight:800">部屋 <b id="invCode" style="color:var(--teal);font-size:22px;letter-spacing:3px;font-family:var(--num)"></b> に招待されています</div>
+      <button class="mainbtn teal" id="joinInvitedBtn">この部屋に入る</button>
+    </div>
+    <div class="box">
+      <h2>🏠 部屋を作る（ホスト）</h2>
+      <button class="mainbtn" id="createBtn">部屋を作る</button>
+      <button class="subbtn" id="resumeBtn" style="display:none"></button>
+      <div class="hint">ホストの端末がゲームを進行します。ゲーム中は画面を開いたままにしてください。人数が足りないときは、ロビーで「ふーさん🐻」を呼べます。</div>
+    </div>
+    <div class="box">
+      <h2>🚪 部屋に入る</h2>
+      <input id="codeIn" class="txt codein" type="text" maxlength="4" placeholder="コード" autocomplete="off" autocapitalize="characters">
+      <button class="mainbtn teal" id="joinBtn">部屋に入る</button>
+      <button class="subbtn" id="rejoinBtn" style="display:none"></button>
+    </div>
+    <button class="subbtn" id="rulesBtn1">📖 ルールを見る</button>
+  </div>
+</section>
+
+<!-- ===== ロビー ===== -->
+<section id="lobby" class="screen">
+  <div class="col scroll">
+    <div class="logo" style="margin:10px 0 0"><h1 style="font-size:30px">たとえて<span>ナラベ！</span></h1><div class="sub" style="margin-top:2px">ロビー</div></div>
+    <div class="box">
+      <div class="codebig">部屋コード<b id="codeBig"></b></div>
+      <div id="qr"></div>
+      <div class="url" id="inviteUrl"></div>
+      <div class="row2"><button class="subbtn" id="copyBtn">URLをコピー</button><button class="subbtn" id="shareBtn">共有する</button></div>
+    </div>
+    <div class="box">
+      <h2>👥 プレイヤー <span id="seatCount" style="color:var(--dim);font-size:13px"></span></h2>
+      <div id="seatList"></div>
+      <div class="npcbtn hostonly"><button id="addNpc">🐻 ふーさんを呼ぶ</button></div>
+      <div class="hint" id="seatHint"></div>
+    </div>
+    <div class="box">
+      <h2>⚙️ ルール設定 <span class="guestonly" style="font-size:11px;color:var(--dim)">（ホストが決めます）</span></h2>
+      <div id="opts"></div>
+    </div>
+    <button class="mainbtn hostonly" id="startBtn">はじめる</button>
+    <div class="waitmsg guestonly">ホストの開始を待っています<span class="dots"></span></div>
+    <button class="subbtn" id="rulesBtn2">📖 ルールを見る</button>
+    <button class="subbtn" id="leaveBtn1">部屋を出る</button>
+  </div>
+</section>
+
+<!-- ===== ゲーム ===== -->
+<section id="game" class="screen">
+  <div class="col">
+    <header class="topbar">
+      <span style="font-size:20px">🐻</span>
+      <span class="pill">ステージ <b id="stageNo"></b></span>
+      <span class="lives" id="lives"></span>
+      <span class="spacer"></span>
+      <span class="pill" style="font-size:11px">部屋 <b id="codeChip" style="font-size:12px"></b></span>
+      <button class="iconbtn" id="rulesBtn3">？</button>
+      <button class="iconbtn" id="menuBtn">…</button>
+    </header>
+    <div class="gscroll" id="gscroll">
+      <div id="players"></div>
+      <!-- お題選び -->
+      <div id="themePick">
+        <div class="secttl"><span>🎲 お題をえらぼう</span><small>👍で投票・ホストが決定</small></div>
+        <div class="cands" id="cands"></div>
+        <div class="hostonly">
+          <button class="subbtn" id="redrawBtn">🔄 ほかのお題を引く</button>
+          <div class="box custom">
+            <h2>✏️ 自分でお題をつくる</h2>
+            <input id="cuT" class="txt" maxlength="30" placeholder="お題（例：ふーさんが喜ぶプレゼント）">
+            <div class="two"><input id="cuLo" class="txt" maxlength="12" placeholder="1側（例：がっかり）"><input id="cuHi" class="txt" maxlength="12" placeholder="100側（例：大よろこび）"></div>
+            <button class="mainbtn teal" id="cuBtn" style="font-size:16px;padding:11px">このお題で遊ぶ</button>
+          </div>
+        </div>
+      </div>
+      <!-- 相談・プレイ -->
+      <div id="talk">
+        <div class="theme" id="themeBox"></div>
+      </div>
+      <div class="secttl" id="mineTtl"><span>🃏 あなたの数字</span><small>ほかの人には見えません</small></div>
+      <div class="mine" id="mine"></div>
+      <div id="boardWrap">
+        <div class="secttl"><span>🧩 ならべボード</span><small>≡をドラッグ／▲▼で並べかえ（みんなで共有）</small></div>
+        <div class="board">
+          <div class="field" id="field"></div>
+          <div class="axis"><span>▲ 小さい</span><span>みんなの予想順</span></div>
+          <div class="chips" id="chips"></div>
+          <div class="axis" style="padding-top:4px"><span>▼ 大きい</span><span></span></div>
+          <div id="refBox"></div>
+          <div class="boardby" id="boardBy"></div>
+        </div>
+      </div>
+    </div>
+    <div id="action">
+      <div class="hostbar" id="hostbar"></div>
+      <div class="pending" id="pending"><div class="pt" id="pendTxt"></div><div class="cd" id="pendCd"></div><button id="waitBtn">✋ ちょっと待って！</button></div>
+      <div id="status"></div>
+      <button class="playbtn" id="playBtn" disabled>出す！</button>
+      <div class="reacts" id="reacts"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== ステージ結果 ===== -->
+<section id="result" class="screen">
+  <div class="col scroll">
+    <div class="rhead" id="rHead"><div class="big" id="rIcon"></div><h1 id="rTitle"></h1><p id="rText"></p></div>
+    <div class="theme" id="rTheme"></div>
+    <div class="secttl"><span>🔍 みんなの数字とたとえ</span><small>小さい順</small></div>
+    <div class="revlist" id="revList"></div>
+    <div class="hint" id="rNote" style="text-align:center"></div>
+    <div class="hostonly" id="hostResultBtns"><button class="mainbtn" id="nextBtn">次のステージへ</button></div>
+    <div class="waitmsg guestonly" id="rWait">ホストが進めるのを待っています<span class="dots"></span></div>
+  </div>
+</section>
+
+<!-- ===== 最終結果 ===== -->
+<section id="final" class="screen">
+  <div class="col scroll">
+    <div class="rhead" id="fHead"><div class="big" id="fIcon"></div><h1 id="fTitle"></h1><p id="fText"></p></div>
+    <div class="box"><h2>📊 きろく</h2><div class="stats" id="fStats"></div></div>
+    <div class="box"><h2>📝 ステージごとのふりかえり</h2><div id="fLog"></div></div>
+    <div class="hostonly"><button class="mainbtn" id="againBtn">もう一度あそぶ</button><button class="subbtn" id="lobbyBtn">ロビーへ戻る</button></div>
+    <div class="waitmsg guestonly">ホストが次の操作を選ぶのを待っています<span class="dots"></span></div>
+    <button class="subbtn" id="leaveBtn2">部屋を出る</button>
+  </div>
+</section>
+
+<!-- ===== オーバーレイ ===== -->
+<div class="overlay" id="mistake">
+  <div class="modal">
+    <div class="stop">ストップ！✋</div>
+    <div class="played" id="mkPlayed"></div>
+    <div style="font-size:13px;font-weight:800;color:var(--dim)">先に出すべきだった札（よけられます）</div>
+    <div class="lowlist" id="mkLow"></div>
+    <div class="hearts" id="mkHearts"></div>
+    <div id="mkLife" style="font-weight:900"></div>
+    <button class="mainbtn" id="mkClose">つづける</button>
+  </div>
+</div>
+
+<div class="overlay" id="rulesModal">
+  <div class="modal">
+    <h2>🐻 たとえてナラベ！のあそびかた</h2>
+    <p>全員でひとつのチーム。<b>1〜100の数字</b>が配られます。数字そのものは言わずに、お題にそった<b>「たとえ」</b>で伝えあい、全員の数字を<b>小さい順</b>に場へ出しきればステージクリア！</p>
+    <h3>ながれ</h3>
+    <ul>
+      <li>ステージ1は1人1枚、ステージ2は2枚、ステージ3は3枚の数字が配られます（数字は自分にしか見えません）。</li>
+      <li>お題を選びます（候補に👍投票 → ホストが決定。自作お題もOK）。お題には「1側」と「100側」があります。</li>
+      <li>自分の数字を、お題にそった言葉でたとえて書きこみます。例：お題「重そうなもの」で 90 なら「冷蔵庫」。<b>数字を書く・言うのは禁止</b>。たとえは出すまで何度でも書きかえOK。</li>
+      <li>「ならべボード」でみんなのチップを予想順に並べかえながら相談しましょう（通話や対面のおしゃべり推奨）。</li>
+      <li>「自分がいちばん小さい」と思ったら<b>出す！</b>。数枚持っているときは、自分の中で一番小さい札から出します。出す前に数秒の「ちょっと待って！」タイムがあります（設定でなしも可）。</li>
+    </ul>
+    <h3>まちがえたら</h3>
+    <ul>
+      <li>出した札より<b>小さい札がだれかの手元に残っていたら</b>「ストップ！」。その小さい札はすべてよけられ、<b>よけた枚数だけライフ（❤️）を失います</b>。そのままゲームは続きます。</li>
+      <li>ライフが0になったらゲームオーバー（全員の負け）。</li>
+    </ul>
+    <h3>ステージとライフ</h3>
+    <ul>
+      <li>ライフは3つから。全員の札を出しきり、ライフが残っていればステージクリア。</li>
+      <li>次のステージの前にライフが1つ回復します（最大3。<b>2人プレイでは回復なし</b>）。</li>
+      <li>ステージ3をクリアすれば全員の勝ち！（設定で5ステージ・どこまでも＝ハウスルールも選べます）</li>
+      <li>ステージ3では<b>ものさしカード</b>（全員に見える数字1枚）が出ます。みんなでたとえを決めて、基準にしましょう（設定でなしも可）。</li>
+    </ul>
+    <h3>🐻 ふーさん（NPC）</h3>
+    <ul>
+      <li>ロビーで呼べるコンピューターの仲間。しゃべれませんが、自分の数字に合ったたとえを自動で書きこみ、ボードの自分の位置も動かします。</li>
+      <li>「自分がいちばん小さそう」と思ったら、ちょっと間をおいて出してきます。ふーさんの出しそうな気配には「ちょっと待って！」で待ったをかけられます。ボードでふーさんを先頭に並べると、出しやすくなります。</li>
+      <li>強さ：<b>やさしい</b>＝たとえが正確／<b>ふつう</b>＝ときどきズレる。</li>
+    </ul>
+    <button class="mainbtn" id="rulesClose">とじる</button>
+  </div>
+</div>
+
+<div class="overlay" id="confirmModal">
+  <div class="modal" style="max-width:360px;text-align:center">
+    <h2 id="cfTitle"></h2>
+    <p id="cfText"></p>
+    <button class="mainbtn" id="cfYes"></button>
+    <button class="subbtn" id="cfNo">キャンセル</button>
+  </div>
+</div>
+
+<div class="overlay" id="connecting">
+  <div class="handoff">
+    <div class="spin"></div>
+    <h2 id="connTitle" style="font-size:20px;margin:0 0 6px">接続中…</h2>
+    <p id="connText" style="color:var(--dim);font-size:13.5px"></p>
+    <button class="subbtn" id="connCancel" style="max-width:240px;margin:14px auto 0">キャンセル</button>
+  </div>
+</div>
+
+<script src="vendor/peerjs.min.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="themes.js"></script>
+<script src="npc-scales.js"></script>
+<script src="logic.js"></script>
+<script src="npc.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
