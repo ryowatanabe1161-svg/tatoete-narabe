@@ -180,6 +180,50 @@ body:not(.is-host) .seg button{pointer-events:none}
 .hostbar.show{display:flex}
 .hostbar button{padding:5px 10px;border-radius:10px;font-weight:900;font-size:12.5px;background:var(--coral);color:#fff}
 
+/* 一斉オープン：同意チェック・めくり */
+.playbtn.teal{background:var(--teal);box-shadow:0 5px 0 var(--teal2)}
+.playbtn.teal:active:not(:disabled){box-shadow:0 1px 0 var(--teal2)}
+.readyck{display:none;background:#effffd;border:2px solid var(--teal);border-radius:16px;padding:8px 9px}
+.readyck.show{display:block}
+.readyck .rt{font-weight:900;font-size:14px;line-height:1.35}
+.readyck .rt b{font-family:var(--num);color:var(--teal2);font-size:16px}
+.readyck .rnote{font-size:12px;font-weight:800;color:var(--coral2);margin-top:2px}
+.readyck .rks{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+.readyck .rk{font-size:12px;font-weight:800;padding:2px 8px;border-radius:999px;background:#fff;border:2px solid var(--line);color:var(--dim)}
+.readyck .rk.on{background:var(--teal);border-color:var(--teal);color:#fff}
+.readyck .rk.npc{background:#ffe2c2;border-color:#f5c99a;color:#8a4b12}
+.readyck .rbtns{display:flex;gap:6px;align-items:center}
+.readyck .agree{flex:1;min-height:46px;border-radius:14px;font-size:16px;font-weight:900;color:#fff;background:var(--teal);box-shadow:0 4px 0 var(--teal2)}
+.readyck .rwait{flex:1;font-weight:800;font-size:13px;color:var(--teal2);text-align:center}
+.readyck .hold{flex:none;min-height:46px;padding:0 12px;border-radius:14px;font-weight:900;font-size:14px;background:var(--ink);color:#fff}
+.pchip .okmark{font-weight:900;color:#fff;background:var(--teal);border-radius:999px;font-size:11px;padding:0 5px}
+.chip .flipn{flex:none;width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-family:var(--num);font-weight:900;font-size:19px;color:#fff;background:#cdb9a5;box-shadow:0 3px 0 #a8927c}
+.chip.locked{padding-left:6px}
+.chip.next{border-color:var(--sun);background:#fffbe6}
+.chip.next .flipn{background:var(--sun);color:#5a3b00;box-shadow:0 3px 0 #d9a520;animation:drum .45s ease-in-out infinite}
+.chip.ok .flipn{background:var(--teal);box-shadow:0 3px 0 var(--teal2)}
+.chip.miss{border-color:var(--coral);background:#ffe8e4}
+.chip.miss .flipn{background:var(--coral);box-shadow:0 3px 0 var(--coral2)}
+.chip .flipn.refn{background:var(--sun);color:#5a3b00;box-shadow:0 3px 0 #d9a520}
+.chip.flip .flipn{animation:cardflip .7s cubic-bezier(.3,1.4,.5,1)}
+.chip.miss.flip{animation:chipshake .6s}
+.chip .missmark{flex:none;font-size:11px;font-weight:900;color:#fff;background:var(--coral2);border-radius:8px;padding:2px 6px}
+@keyframes drum{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg) scale(1.08)}}
+@keyframes cardflip{0%{transform:rotateY(90deg) scale(1.35)}55%{transform:rotateY(0) scale(1.3)}100%{transform:none}}
+@keyframes chipshake{15%,55%{transform:translateX(-9px)}35%,75%{transform:translateX(9px)}}
+.drum{display:inline-block;animation:drum .45s infinite;color:var(--coral2)}
+#niceFx.bad{color:#fff;background:var(--coral);border-color:var(--coral2);font-size:26px}
+.rev.miss .n{background:var(--coral);box-shadow:0 3px 0 var(--coral2)}
+.rev.wowrow{border-color:var(--sun);background:#fffbe6}
+.rev.show .n{animation:flip .55s}
+.lobbyreq{display:none;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;background:#eef0ff;border:2px solid #b8bfff;border-radius:12px;padding:6px 8px;margin-bottom:6px;font-size:12.5px;font-weight:800}
+.lobbyreq.show{display:flex}
+.lobbyreq button{padding:5px 10px;border-radius:10px;font-weight:900;font-size:12.5px;background:#6c7bff;color:#fff}
+.lobbyreq button.ghost{background:#fff;color:var(--dim);border:2px solid var(--line)}
+body.mode-reveal .chip .mynum{background:var(--teal)}
+body.revealing .chip.me:not(.miss):not(.next){border-color:var(--line);background:#fffaf4}
+.rev .by{flex-wrap:wrap}
+
 /* お題選び */
 .cands{display:flex;flex-direction:column;gap:9px}
 .cand{background:#fff;border:2px solid var(--line);border-radius:18px;padding:11px 12px;box-shadow:0 3px 0 var(--line)}
@@ -271,7 +315,7 @@ body:not(.is-host) .seg button{pointer-events:none}
       <h1>たとえて<span>ナラベ！</span></h1>
       <div class="sub">ふーさんと数字をことばで伝えあう協力ゲーム</div>
       <div class="scalebar"><b style="left:7%">1</b><b style="left:34%">？</b><b style="left:63%">？</b><b style="left:93%">100</b></div>
-      <p>数字は言っちゃダメ。お題にそって「たとえ」て、小さい順に出しきろう！（2〜10人）</p>
+      <p>数字は言っちゃダメ。お題にそって「たとえ」て、みんなで小さい順に並べよう！（2〜10人）</p>
     </div>
     <div class="box">
       <h2>🙂 あなたの名前</h2>
@@ -359,10 +403,10 @@ body:not(.is-host) .seg button{pointer-events:none}
       <div class="secttl" id="mineTtl"><span>🃏 あなたの数字</span><small>ほかの人には見えません</small></div>
       <div class="mine" id="mine"></div>
       <div id="boardWrap">
-        <div class="secttl"><span>🧩 ならべボード</span><small>≡をドラッグ／▲▼で並べかえ（みんなで共有）</small></div>
+        <div class="secttl"><span>🧩 ならべボード</span><small id="boardHint">≡をドラッグ／▲▼で並べかえ（みんなで共有）</small></div>
         <div class="board">
           <div class="field" id="field"></div>
-          <div class="axis"><span>▲ 小さい</span><span>みんなの予想順</span></div>
+          <div class="axis"><span>▲ 小さい</span><span id="axisR">みんなの予想順</span></div>
           <div class="chips" id="chips"></div>
           <div class="axis" style="padding-top:4px"><span>▼ 大きい</span><span></span></div>
           <div id="refBox"></div>
@@ -371,10 +415,13 @@ body:not(.is-host) .seg button{pointer-events:none}
       </div>
     </div>
     <div id="action">
+      <div class="lobbyreq" id="lobbyReq"></div>
       <div class="hostbar" id="hostbar"></div>
+      <div class="readyck" id="readyck"></div>
       <div class="pending" id="pending"><div class="pt" id="pendTxt"></div><div class="cd" id="pendCd"></div><button id="waitBtn">✋ ちょっと待って！</button></div>
       <div id="status"></div>
       <button class="playbtn" id="playBtn" disabled>出す！</button>
+      <button class="playbtn teal" id="proposeBtn" style="display:none">✅ この順番で決定</button>
       <div class="reacts" id="reacts"></div>
     </div>
   </div>
@@ -385,7 +432,7 @@ body:not(.is-host) .seg button{pointer-events:none}
   <div class="col scroll">
     <div class="rhead" id="rHead"><div class="big" id="rIcon"></div><h1 id="rTitle"></h1><p id="rText"></p></div>
     <div class="theme" id="rTheme"></div>
-    <div class="secttl"><span>🔍 みんなの数字とたとえ</span><small>小さい順</small></div>
+    <div class="secttl"><span>🔍 みんなの数字とたとえ</span><small id="rOrderLbl">小さい順</small></div>
     <div class="revlist" id="revList"></div>
     <div class="hint" id="rNote" style="text-align:center"></div>
     <div class="hostonly" id="hostResultBtns"><button class="mainbtn" id="nextBtn">次のステージへ</button></div>
@@ -421,34 +468,57 @@ body:not(.is-host) .seg button{pointer-events:none}
 <div class="overlay" id="rulesModal">
   <div class="modal">
     <h2>🐻 たとえてナラベ！のあそびかた</h2>
-    <p>全員でひとつのチーム。<b>1〜100の数字</b>が配られます。数字そのものは言わずに、お題にそった<b>「たとえ」</b>で伝えあい、全員の数字を<b>小さい順</b>に場へ出しきればステージクリア！</p>
-    <h3>ながれ</h3>
+    <p>全員でひとつのチーム。<b>1〜100の数字</b>が配られます。数字そのものは言わずに、お題にそった<b>「たとえ」</b>で伝えあい、全員の数字を<b>小さい順</b>に並べられたらステージクリア！</p>
+    <h3>ながれ（一斉オープン・標準）</h3>
     <ul>
       <li>ステージ1は1人1枚、ステージ2は2枚、ステージ3は3枚の数字が配られます（数字は自分にしか見えません）。</li>
       <li>お題を選びます（候補に👍投票 → ホストが決定。自作お題もOK）。お題には「1側」と「100側」があります。</li>
-      <li>自分の数字を、お題にそった言葉でたとえて書きこみます。例：お題「重そうなもの」で 90 なら「冷蔵庫」。<b>数字を書く・言うのは禁止</b>。たとえは出すまで何度でも書きかえOK。</li>
-      <li>「ならべボード」でみんなのチップを予想順に並べかえながら相談しましょう（通話や対面のおしゃべり推奨）。</li>
-      <li>「自分がいちばん小さい」と思ったら<b>出す！</b>。数枚持っているときは、自分の中で一番小さい札から出します。出す前に数秒の「ちょっと待って！」タイムがあります（設定でなしも可）。</li>
+      <li>自分の数字を、お題にそった言葉でたとえて書きこみます。例：お題「重そうなもの」で 90 なら「冷蔵庫」。<b>数字を書く・言うのは禁止</b>。</li>
+      <li>「ならべボード」で<b>全員の札</b>（数枚持っていれば1枚ずつ）を、上が小さい順になるように並べかえて相談します（通話や対面のおしゃべり推奨）。</li>
+      <li>全員のたとえがそろったら、だれでも<b>「この順番で決定」</b>を提案できます。人間全員が<b>OK</b>したら決定（ふーさんは自動でOK）。だれかがチップを動かすと、OKはやり直しです。「まって」で提案を取り下げられます。</li>
+      <li>決定したら、<b>上から1枚ずつめくります</b>。</li>
     </ul>
     <h3>まちがえたら</h3>
     <ul>
-      <li>出した札より<b>小さい札がだれかの手元に残っていたら</b>「ストップ！」。その小さい札はすべてよけられ、<b>よけた枚数だけライフ（❤️）を失います</b>。そのままゲームは続きます。</li>
-      <li>ライフが0になったらゲームオーバー（全員の負け）。</li>
+      <li>めくった札が、<b>それまでにめくった一番大きい数字より小さい</b>ときは「ミス」。<b>ミス1枚につきライフ（❤️）を1つ失います</b>。最後までめくります。</li>
+      <li>めくり終わってライフが残っていればステージクリア、0ならゲームオーバー（全員の負け）。</li>
+      <li>結果画面では全員の数字とたとえが並び、いちばん大きく外れた札に「えっ!?」マークがつきます。</li>
     </ul>
     <h3>ステージとライフ</h3>
     <ul>
-      <li>ライフは3つから。全員の札を出しきり、ライフが残っていればステージクリア。</li>
-      <li>次のステージの前にライフが1つ回復します（最大3。<b>2人プレイでは回復なし</b>）。</li>
+      <li>ライフは3つから。次のステージの前にライフが1つ回復します（最大3。<b>2人プレイでは回復なし</b>）。</li>
       <li>ステージ3をクリアすれば全員の勝ち！（設定で5ステージ・どこまでも＝ハウスルールも選べます）</li>
       <li>ステージ3では<b>ものさしカード</b>（全員に見える数字1枚）が出ます。みんなでたとえを決めて、基準にしましょう（設定でなしも可）。</li>
     </ul>
+    <h3>もうひとつの遊び方：1枚ずつ出す</h3>
+    <ul>
+      <li>ロビーの「遊び方」で選べます。「自分がいちばん小さい」と思ったら<b>出す！</b>（数枚あれば自分の一番小さい札から）。出す前に数秒の「ちょっと待って！」タイムがあります（設定でなしも可）。</li>
+      <li>出した札より<b>小さい札がだれかの手元に残っていたら</b>「ストップ！」。その札はすべてよけられ、よけた枚数だけライフを失います。</li>
+    </ul>
     <h3>🐻 ふーさん（NPC）</h3>
     <ul>
-      <li>ロビーで呼べるコンピューターの仲間。しゃべれませんが、自分の数字に合ったたとえを自動で書きこみ、ボードの自分の位置も動かします。</li>
-      <li>「自分がいちばん小さそう」と思ったら、ちょっと間をおいて出してきます。ふーさんの出しそうな気配には「ちょっと待って！」で待ったをかけられます。ボードでふーさんを先頭に並べると、出しやすくなります。</li>
+      <li>ロビーで呼べるコンピューターの仲間。しゃべれませんが、自分の数字に合ったたとえを自動で書きこみ、ボードの自分のチップも数字に合った位置へ置きます。置いたあとは「この順番で決定」に自動でOKします。</li>
+      <li>「1枚ずつ出す」では、自分がいちばん小さそうだと思ったら間をおいて出してきます（「ちょっと待って！」で止められます）。</li>
       <li>強さ：<b>やさしい</b>＝たとえが正確／<b>ふつう</b>＝ときどきズレる。</li>
     </ul>
+    <h3>⋯メニュー</h3>
+    <ul>
+      <li>ホストは「中断してロビーに戻る」で、同じ部屋のまま全員をロビーに戻せます。参加者は「ロビーに戻りたい」をホストに伝えたり、退出したりできます。</li>
+    </ul>
     <button class="mainbtn" id="rulesClose">とじる</button>
+  </div>
+</div>
+
+<div class="overlay" id="menuModal">
+  <div class="modal" style="max-width:360px;text-align:center">
+    <h2>メニュー</h2>
+    <button class="mainbtn hostonly" id="menuAbort">⏸️ 中断してロビーに戻る</button>
+    <div class="hint hostonly" style="margin-top:4px">部屋コード・参加者・ふーさん・設定はそのまま。全員がロビーに戻ります。</div>
+    <button class="mainbtn teal guestonly" id="menuReq">🙋 ロビーに戻りたい（ホストに伝える）</button>
+    <div class="hint guestonly" style="margin-top:4px">ゲームを中断できるのはホストだけです。</div>
+    <button class="subbtn" id="menuRules">📖 ルールを見る</button>
+    <button class="subbtn" id="menuLeave"><span class="hostonly">部屋を閉じる</span><span class="guestonly">退出する</span></button>
+    <button class="subbtn" id="menuClose">とじる</button>
   </div>
 </div>
 

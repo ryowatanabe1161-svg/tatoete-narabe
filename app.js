@@ -20,11 +20,12 @@
   var LS_ID = 'tn-client-id', LS_NAME = 'tn-name', LS_HOST = 'tn-host-room', SS_CLIENT = 'tn-joined';
   var REACTS = ['👍', '🤔', '😱', '🙏', '😂', '⏳'];
   var AVC = ['#ff6b5b', '#17a89b', '#f2a516', '#6c7bff', '#e05aa8', '#3fae4f', '#9a6bd8', '#ff8f3d', '#2c9bd6', '#b8860b'];
-  var DEFAULT_OPTS = { stages: 3, ref: true, wait: 3, npc: 'normal' };
+  var DEFAULT_OPTS = { mode: 'reveal', stages: 3, ref: true, wait: 3, npc: 'normal' };
   var OPT_DEF = [
+    { k: 'mode', label: '遊び方', ch: [['reveal', '一斉オープン（標準）'], ['one', '1枚ずつ出す']] },
     { k: 'stages', label: 'ステージ数', ch: [[3, '3（公式）'], [5, '5'], [99, 'どこまでも']] },
     { k: 'ref', label: 'ステージ3のものさしカード', ch: [[true, 'あり'], [false, 'なし']] },
-    { k: 'wait', label: '「ちょっと待って！」タイム', ch: [[3, '3秒'], [5, '5秒'], [0, 'なし']] },
+    { k: 'wait', label: '「ちょっと待って！」タイム', ch: [[3, '3秒'], [5, '5秒'], [0, 'なし']], only: 'one' },
     { k: 'npc', label: 'ふーさんの強さ', ch: [['easy', 'やさしい'], ['normal', 'ふつう']] }
   ];
 
@@ -41,6 +42,8 @@
   function normCode(c) { return String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/O/g, '0').replace(/I/g, '1').slice(0, 4); }
   function inviteUrl(code) { var u = location.origin + location.pathname + '?room=' + code; if (Q.get('ice')) u += '&ice=' + encodeURIComponent(Q.get('ice')); return u; }
   function catOf(k) { return TH.CATS.filter(function (c) { return c.k === k; })[0] || { e: '✏️', label: 'オリジナル' }; }
+  function modeOf(opts) { return opts && opts.mode === 'one' ? 'one' : 'reveal'; }
+  var REVEAL_MS = TURBO ? 380 : 1200, REVEAL_FIRST = TURBO ? 500 : 1600, REVEAL_END = TURBO ? 1000 : 2800;
   var reducedMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------- 汎用UI ----------
@@ -74,7 +77,8 @@
     return { code: genCode(), phase: 'lobby', nextSid: 2, gid: 0, opts: Object.assign({}, DEFAULT_OPTS),
       seats: [{ sid: 1, name: name, kind: 'host', clientId: myId, connected: true }],
       G: null, theme: null, cands: [], votes: {}, board: [], boardBy: null, boardHuman: false, pending: null, pendSeq: 0,
-      reacts: [], reactSeq: 0, log: [], evId: 0, ev: null, history: [], used: [], idleFrom: 0, talkFrom: 0, waited: {}, created: Date.now() };
+      reacts: [], reactSeq: 0, log: [], evId: 0, ev: null, history: [], used: [], idleFrom: 0, talkFrom: 0, waited: {}, created: Date.now(),
+      ready: null, readySeq: 0, reveal: null, lobbyReq: null };
   }
   function startHost(name, resumeRoom) {
     document.body.classList.add('is-host');
@@ -82,7 +86,9 @@
     var R = host.room;
     if (resumeRoom) {
       R.seats.forEach(function (s) { if (s.kind === 'remote') s.connected = false; });
+      R.opts = Object.assign({}, DEFAULT_OPTS, R.opts || {});
       if (R.pending) schedulePending();
+      if (R.phase === 'reveal') setTimeout(scheduleReveal, 0);
       R.idleFrom = Date.now(); R.talkFrom = Math.min(R.talkFrom || 0, Date.now());
     }
     connecting(true, '部屋を準備しています…', 'シグナリングサーバーに接続中');
@@ -132,7 +138,7 @@
       addLog('👋 ' + seat.name + 'が退出しました');
       delete host.conns[conn.clientId];
       try { conn.close(); } catch (e) {}
-      return hostBroadcast();
+      return checkReady();
     }
     hostAction(seat, m, conn);
   }
@@ -163,7 +169,7 @@
     if (!conn.clientId || host.conns[conn.clientId] !== conn) return;
     delete host.conns[conn.clientId];
     var seat = seatByClient(conn.clientId);
-    if (seat && seat.connected) { seat.connected = false; addLog('⚠️ ' + seat.name + 'の接続が切れました'); hostBroadcast(); }
+    if (seat && seat.connected) { seat.connected = false; addLog('⚠️ ' + seat.name + 'の接続が切れました'); checkReady(); }
   }
   function hostHeartbeat() {
     if (!host) return;
@@ -205,7 +211,8 @@
     if (R.seats.length < 2) return toast('2人以上で遊べます（ふーさんを呼んでもOK）');
     var pids = R.seats.map(function (s) { return s.sid; });
     R.G = L.newGame(pids, { maxStage: R.opts.stages, ref: R.opts.ref });
-    R.gid++; R.G.gid = R.gid;
+    R.G.mode = modeOf(R.opts);
+    R.gid++; R.G.gid = R.gid; R.lobbyReq = null;
     R.history = []; R.log = []; R.reacts = [];
     L.startStage(R.G, rngFor(R.gid * 100 + 1), debugDeck(1));
     addLog('🎉 ゲーム開始！ ステージ1（1人1枚）');
@@ -222,7 +229,7 @@
   function enterTheme() {
     var R = host.room;
     R.phase = 'theme'; R.theme = null; R.cands = []; R.cands = drawCands(2); R.votes = {}; R.pending = null; clearTimeout(host.pendT);
-    R.board = []; R.boardBy = null; R.boardHuman = false;
+    R.board = []; R.boardBy = null; R.boardHuman = false; R.ready = null; R.reveal = null; clearTimeout(host.revT);
     R.ev = { id: ++R.evId, type: 'stage', stage: R.G.stage };
     host.npc = {};
     hostBroadcast();
@@ -245,6 +252,15 @@
     var R = host.room, G = R.G;
     function err(msg) { if (conn) conn.send({ t: 'error', msg: msg }); else if (seat.kind === 'host') { toast(msg); hostBroadcast(); } }
     if (m.t === 'react') return hostReact(seat, m.e);
+    if (m.t === 'abort') { if (isHostSeat(seat) && R.phase !== 'lobby') hostToLobby('⏸️ ホストがゲームを中断しました'); return; }
+    if (m.t === 'lobbyReq') {   // 参加者：「ロビーに戻りたい」（ホストに知らせるだけ。中断できるのはホストのみ）
+      if (seat.kind !== 'remote' || R.phase === 'lobby') return;
+      if (R.lobbyReq && R.lobbyReq.by === seat.sid && Date.now() - R.lobbyReq.at < 5000) return;
+      R.lobbyReq = { by: seat.sid, at: Date.now() }; addLog('🙋 ' + seat.name + '「ロビーに戻りたい」');
+      R.ev = { id: ++R.evId, type: 'lobbyReq', by: seat.sid };
+      return hostBroadcast();
+    }
+    if (m.t === 'lobbyReqDismiss') { if (isHostSeat(seat)) { R.lobbyReq = null; hostBroadcast(); } return; }
     if (!G || (m.gid != null && m.gid !== R.gid)) return;
     try {
       switch (m.t) {
@@ -267,8 +283,10 @@
           return startTalk({ id: 0, c: 'custom', t: t, lo: lo, hi: hi, custom: true });
         case 'expr':
           if (R.phase !== 'talk') return;
+          var beforeX = G.cards[m.cid] && G.cards[m.cid].expr;
           L.setExpr(G, seat.sid, m.cid, m.text);
-          return hostBroadcast();
+          if (R.ready && G.cards[m.cid].expr !== beforeX) resetReady(seat, 'たとえを書きかえた');
+          return checkReady();
         case 'refExpr':
           if (R.phase !== 'talk' || !G.ref) return;
           L.setRefExpr(G, m.text); R.refBy = seat.sid;
@@ -277,9 +295,29 @@
           if (R.phase !== 'talk' || !Array.isArray(m.order)) return;
           var cur = R.board.slice().sort().join(','), nw = m.order.map(String);
           if (nw.slice().sort().join(',') !== cur) return conn && conn.send({ t: 'error', msg: 'ボードが更新されていました。もう一度どうぞ' });
+          var changedB = nw.join(',') !== R.board.join(',');
           R.board = nw; R.boardBy = seat.sid; if (seat.kind !== 'npc') R.boardHuman = true;
+          if (R.ready && changedB) resetReady(seat, '並べかえた');
           return hostBroadcast();
-        case 'play': return hostPlay(seat, m, err);
+        case 'propose':   // 一斉オープン：「この順番で決定」を提案（提案者は同意ずみ）
+          if (R.phase !== 'talk' || G.mode !== 'reveal' || seat.kind === 'npc' || R.ready) return;
+          var blk = proposeBlock(); if (blk) return err(blk);
+          R.ready = { id: ++R.readySeq, ver: 0, by: seat.sid, agreed: {}, reset: null };
+          R.ready.agreed[seat.sid] = true;
+          addLog('🙋 ' + seat.name + 'が「この順番で決定」を提案');
+          R.ev = { id: ++R.evId, type: 'propose', by: seat.sid };
+          return checkReady();
+        case 'agree':
+          if (R.phase !== 'talk' || !R.ready || seat.kind === 'npc') return;
+          if (m.rid !== R.ready.id || m.ver !== R.ready.ver) return err('並びが変わりました。もう一度確認してね');
+          R.ready.agreed[seat.sid] = true;
+          return checkReady();
+        case 'hold':      // 「まって！」＝提案を取り下げる
+          if (R.phase !== 'talk' || !R.ready) return;
+          R.ready = null; addLog('✋ ' + seat.name + 'が「まって！」');
+          R.ev = { id: ++R.evId, type: 'hold', by: seat.sid };
+          return hostBroadcast();
+        case 'play': if (G.mode === 'reveal') return; return hostPlay(seat, m, err);
         case 'wait':
           if (!R.pending) return;
           var p = R.pending; R.pending = null; clearTimeout(host.pendT);
@@ -298,7 +336,7 @@
           R.phase = 'final'; R.ev = { id: ++R.evId, type: 'final', won: G.end.won };
           return hostBroadcast();
         case 'proxy':   // 切断した人の札をホストが代わりに出す
-          if (!isHostSeat(seat) || R.phase !== 'talk') return;
+          if (!isHostSeat(seat) || R.phase !== 'talk' || G.mode === 'reveal') return;
           var who = seatBySid(+m.sid); if (!who || who.kind !== 'remote' || who.connected) return;
           var h = L.handOf(G, who.sid); if (!h.length) return;
           return hostPlay(who, { cid: h[0].cid, proxy: true }, err);
@@ -320,6 +358,85 @@
       return hostBroadcast();
     }
     doPlay(seat.sid, m.cid);
+  }
+  // ---- 一斉オープン：同意チェックとめくり ----
+  function seatActive(sid) { var st = seatBySid(sid); return !!st && (st.kind !== 'remote' || st.connected); }
+  function humansNeeded() { return host.room.seats.filter(function (st) { return st.kind !== 'npc' && (st.kind === 'host' || st.connected); }); }
+  function npcsSettled() {
+    var R = host.room, key = R.gid + ':' + R.G.stage;
+    return R.seats.every(function (st) { if (st.kind !== 'npc') return true; var m = host.npc[st.sid]; return m && m.key === key && m.boardDone; });
+  }
+  function proposeBlock() {
+    var R = host.room, G = R.G;
+    var missing = L.handCards(G).filter(function (c) { return !c.expr && seatActive(c.by); }).length;
+    if (missing) return '全員のたとえがそろったら決定できます（あと' + missing + '枚）';
+    if (!npcsSettled()) return 'ふーさんがチップを置いています…';
+    return null;
+  }
+  function resetReady(seat, what) {
+    var R = host.room; if (!R.ready) return;
+    R.ready.agreed = {}; R.ready.ver++; R.ready.reset = { by: seat.sid, what: what };
+    addLog('🔀 ' + seat.name + 'が' + what + 'ので、同意をやり直し');
+    R.ev = { id: ++R.evId, type: 'readyReset', by: seat.sid, what: what };
+  }
+  function checkReady() {
+    var R = host.room;
+    if (R.ready && R.phase === 'talk') {
+      if (proposeBlock()) R.ready = null;
+      else if (humansNeeded().every(function (st) { return R.ready.agreed[st.sid]; })) return startReveal();
+    }
+    hostBroadcast();
+  }
+  function startReveal() {
+    var R = host.room, G = R.G;
+    var board = R.board.slice(), order = board.filter(function (x) { return x !== 'ref'; });
+    var ev = L.revealOrder(G, order);
+    R.ready = null; R.phase = 'reveal';
+    R.reveal = { board: board, order: order, steps: ev.steps, shown: 0, misses: ev.misses, livesBefore: ev.livesBefore, next: Date.now() + REVEAL_FIRST };
+    addLog('🔒 この順番で決定！ 上からめくります');
+    R.ev = { id: ++R.evId, type: 'revealStart' };
+    scheduleReveal(); hostBroadcast();
+  }
+  function scheduleReveal() {
+    clearTimeout(host.revT);
+    var R = host.room; if (R.phase !== 'reveal' || !R.reveal) return;
+    host.revT = setTimeout(revealTick, Math.max(0, R.reveal.next - Date.now()));
+  }
+  function revealTick() {
+    var R = host.room, rv = R.reveal; if (R.phase !== 'reveal' || !rv) return;
+    if (rv.shown >= rv.steps.length) return finishReveal();
+    rv.shown++;
+    var st = rv.steps[rv.shown - 1], last = rv.shown === rv.steps.length;
+    if (st.miss) addLog('💥 ' + nameOf(st.by) + 'の ' + st.n + '（それまでの最大 ' + st.topBefore + '）… ❤️-1');
+    R.ev = { id: ++R.evId, type: 'flip', k: rv.shown, cid: st.cid, miss: st.miss, by: st.by, livesAfter: st.livesAfter };
+    // 最後の1枚の前はちょっと長めにためる。ミスのあとは少し間をあける
+    var gap = last ? REVEAL_END : rv.shown === rv.steps.length - 1 ? REVEAL_MS * 1.6 : REVEAL_MS;
+    rv.next = Date.now() + gap + (st.miss ? (TURBO ? 150 : 600) : 0);
+    hostBroadcast(); scheduleReveal();
+  }
+  function finishReveal() {
+    var R = host.room, G = R.G, rv = R.reveal;
+    var sorted = rv.steps.map(function (x) { return x.n; }).sort(function (a, b) { return a - b; });
+    var sp = L.biggestSurprise(rv.steps);
+    var cards = rv.steps.map(function (x, i) { var c = G.cards[x.cid]; return { by: c.by, n: c.n, expr: c.expr, state: x.miss ? 'miss' : 'ok', guess: i, rank: sorted.indexOf(c.n), drop: x.drop, top: x.topBefore, wow: !!sp && sp.cid === x.cid }; });
+    R.history.push({ mode: 'reveal', stage: G.stage, theme: R.theme, lives: G.lives, livesBefore: rv.livesBefore, mistakes: rv.misses, cleared: G.phase === 'cleared' || !!(G.end && G.end.won),
+      cards: cards, ref: G.ref ? { n: G.ref.n, expr: G.ref.expr, at: rv.board.indexOf('ref') } : null });
+    R.phase = 'result'; R.reveal = null;
+    if (G.phase === 'over') addLog(G.end.won ? '🏆 全ステージクリア！' : '💀 ライフがなくなった…');
+    else addLog('🎉 ステージ' + G.stage + 'クリア！');
+    R.ev = { id: ++R.evId, type: 'revealEnd' };
+    hostBroadcast();
+  }
+  // ---- 中断してロビーへ（部屋コード・接続中の参加者・ふーさん・設定はそのまま） ----
+  function hostToLobby(msg) {
+    var R = host.room;
+    clearTimeout(host.pendT); clearTimeout(host.revT);
+    R.seats = R.seats.filter(function (st) { return st.kind !== 'remote' || st.connected; });
+    R.phase = 'lobby'; R.G = null; R.pending = null; R.ready = null; R.reveal = null; R.theme = null; R.cands = []; R.votes = {};
+    R.board = []; R.lobbyReq = null; R.history = []; host.npc = {};
+    addLog(msg || 'ロビーに戻りました');
+    R.ev = { id: ++R.evId, type: 'toLobby', msg: msg || '' };
+    hostBroadcast();
   }
   function schedulePending() {
     var R = host.room; clearTimeout(host.pendT);
@@ -418,7 +535,7 @@
     // 4) 出すかどうか（同時に1人だけ）
     // 人間がたとえを書き終える（または45秒たつ）までは、ふーさんは出さない
     var humansReady = L.handCards(G).every(function (c) { var st = seatBySid(c.by); return !st || st.kind === 'npc' || c.expr; }) || now - R.talkFrom > 45000 * k;
-    if (NPC_PLAY && humansReady && !R.pending && now - R.idleFrom > (TURBO ? 1200 : 9000)) {
+    if (G.mode !== 'reveal' && NPC_PLAY && humansReady && !R.pending && now - R.idleFrom > (TURBO ? 1200 : 9000)) {
       var top = G.field.length ? G.field[G.field.length - 1].n : 0, total = L.handCards(G).length;
       var idleSec = (now - R.idleFrom) / 1000 / k;
       var ready = null;
@@ -444,20 +561,30 @@
       seats: R.seats.map(function (s) { return { sid: s.sid, name: s.name, kind: s.kind, connected: s.kind !== 'remote' || s.connected }; }) };
     if (!G || R.phase === 'lobby') return v;
     var reveal = R.phase === 'result' || R.phase === 'final';
-    v.gid = R.gid; v.stage = G.stage; v.maxStage = G.maxStage; v.lives = G.lives; v.maxLives = L.MAX_LIVES; v.lifeGain = R.lifeGain || 0;
+    var rv = R.phase === 'reveal' ? R.reveal : null, shown = {};   // めくり中：めくった札だけ数字を送る
+    if (rv) rv.steps.slice(0, rv.shown).forEach(function (x) { shown[x.cid] = x; });
+    v.gid = R.gid; v.mode = G.mode || 'one'; v.stage = G.stage; v.maxStage = G.maxStage; v.maxLives = L.MAX_LIVES; v.lifeGain = R.lifeGain || 0;
+    v.lives = rv ? (rv.shown ? rv.steps[rv.shown - 1].livesAfter : rv.livesBefore) : G.lives;   // ライフも、めくった分だけ減らして見せる
     v.theme = R.theme; v.cands = R.cands; v.votes = R.votes;
     v.seats.forEach(function (s) { s.left = L.handOf(G, s.sid).length; });
     v.cards = Object.keys(G.cards).map(function (k) {
       var c = G.cards[k], o = { cid: c.cid, by: c.by, expr: c.expr, state: c.state };
-      if (c.state !== 'hand' || reveal) o.n = c.n;          // 手元の札の数字は公開しない
+      if (rv) { var x = shown[c.cid]; if (x) { o.n = c.n; o.state = x.miss ? 'miss' : 'ok'; } else o.state = 'hand'; }
+      else if (c.state !== 'hand' || reveal) o.n = c.n;          // 手元の札の数字は公開しない
       return o;
     });
-    v.hand = L.handOf(G, sid).map(function (c) { return { cid: c.cid, n: c.n, expr: c.expr }; });   // 自分の札だけ数字つき
-    v.field = G.field.map(function (c) { return c.cid; }); v.aside = G.aside.map(function (c) { return c.cid; });
+    v.hand = (rv ? L.cardsOf(G, sid) : L.handOf(G, sid)).map(function (c) { return { cid: c.cid, n: c.n, expr: c.expr }; });   // 自分の札だけ数字つき
+    v.field = rv ? [] : G.field.map(function (c) { return c.cid; }); v.aside = rv ? [] : G.aside.map(function (c) { return c.cid; });
     v.ref = G.ref ? { n: G.ref.n, expr: G.ref.expr } : null;   // ものさしカードは全員に公開
-    v.board = R.phase === 'talk' ? R.board : []; v.boardBy = R.boardBy;
+    v.board = R.phase === 'talk' ? R.board : rv ? rv.board : []; v.boardBy = R.boardBy;
     v.pending = R.pending ? { id: R.pending.id, by: R.pending.by, expr: R.pending.expr, left: Math.max(0, R.pending.until - Date.now()) } : null;
-    v.gphase = G.phase; v.end = G.end;
+    v.ready = R.ready ? { id: R.ready.id, ver: R.ready.ver, by: R.ready.by, reset: R.ready.reset,
+      agreed: Object.keys(R.ready.agreed).map(Number), need: humansNeeded().map(function (s) { return s.sid; }) } : null;
+    v.block = R.phase === 'talk' && G.mode === 'reveal' ? proposeBlock() : null;
+    v.reveal = rv ? { shown: rv.shown, total: rv.steps.length, next: rv.shown < rv.steps.length ? rv.steps[rv.shown].cid : null, last: rv.shown ? rv.steps[rv.shown - 1].cid : null,
+      top: rv.steps.slice(0, rv.shown).reduce(function (a, x) { return Math.max(a, x.n); }, 0), misses: rv.steps.slice(0, rv.shown).filter(function (x) { return x.miss; }).length } : null;
+    v.gphase = rv ? 'play' : G.phase; v.end = rv ? null : G.end;
+    if (sid === 1 && R.lobbyReq) v.lobbyReq = R.lobbyReq;
     if (reveal) v.history = R.history;
     return v;
   }
@@ -492,7 +619,7 @@
   });
   $('startBtn').onclick = function () { if (host) hostStartGame(); };
   $('againBtn').onclick = function () { if (host) hostStartGame(); };
-  $('lobbyBtn').onclick = function () { if (!host) return; var R = host.room; R.phase = 'lobby'; R.G = null; R.ev = null; R.pending = null; addLog('ロビーに戻りました'); hostBroadcast(); };
+  $('lobbyBtn').onclick = function () { if (host) hostToLobby('ロビーに戻りました'); };
 
   // =====================================================================
   //  参加者（クライアント）
@@ -572,7 +699,17 @@
       });
     } else confirmBox('部屋を出ますか？', 'ゲーム中に出ても、同じ名前で入り直せば元の席に戻れます。', '部屋を出る', function () { sstore(SS_CLIENT, null); leaveClient(true); });
   }
-  $('leaveBtn1').onclick = $('leaveBtn2').onclick = $('menuBtn').onclick = leaveRoom;
+  $('leaveBtn1').onclick = $('leaveBtn2').onclick = leaveRoom;
+  // ⋯メニュー：ホスト＝中断してロビーへ／部屋を閉じる。参加者＝「ロビーに戻りたい」をホストに伝える／退出する
+  $('menuBtn').onclick = function () { overlay('menuModal', true); };
+  $('menuClose').onclick = function () { overlay('menuModal', false); };
+  $('menuAbort').onclick = function () {
+    overlay('menuModal', false);
+    confirmBox('中断してロビーに戻りますか？', 'いまのゲームを終了して、全員をこの部屋のロビーに戻します。部屋コード・参加者・ふーさん・設定はそのままです。', '中断してロビーへ', function () { send({ t: 'abort' }); });
+  };
+  $('menuReq').onclick = function () { overlay('menuModal', false); send({ t: 'lobbyReq' }); toast('ホストに「ロビーに戻りたい」と伝えました'); };
+  $('menuLeave').onclick = function () { overlay('menuModal', false); leaveRoom(); };
+  $('menuRules').onclick = function () { overlay('menuModal', false); overlay('rulesModal', true); };
 
   // ---- 自分の操作（ホストは直接、参加者は送信） ----
   var lastView = null, playSent = 0;
@@ -594,8 +731,10 @@
     lastView = v; window.__tn.view = v;
     if (lastEvId === null) { lastEvId = v.ev ? v.ev.id : 0; seenReact = v.reacts && v.reacts.length ? v.reacts[v.reacts.length - 1].id : 0; }
     if (v.phase !== 'theme' && v.phase !== 'talk') $('sayFeed').innerHTML = '';
-    if (v.phase === 'lobby') { show('lobby'); renderLobby(v); overlay('mistake', false); }
-    else if (v.phase === 'theme' || v.phase === 'talk') { show('game'); renderGame(v); }
+    document.body.classList.toggle('mode-reveal', v.mode === 'reveal' || (!v.mode && modeOf(v.opts) === 'reveal'));
+    document.body.classList.toggle('revealing', v.phase === 'reveal');
+    if (v.phase === 'lobby') { show('lobby'); renderLobby(v); overlay('mistake', false); overlay('menuModal', false); }
+    else if (v.phase === 'theme' || v.phase === 'talk' || v.phase === 'reveal') { show('game'); renderGame(v); }
     else if (v.phase === 'result') { show('result'); renderResult(v); }
     else if (v.phase === 'final') { show('final'); renderFinal(v); }
     if (v.ev && v.ev.id !== lastEvId) { lastEvId = v.ev.id; effect(v, v.ev); }
@@ -621,7 +760,7 @@
     }).join(''));
     $('seatHint').textContent = n < 2 ? 'あと' + (2 - n) + '人で遊べます。友だちを招待するか、ふーさん🐻を呼んでね。' : '2〜10人で遊べます。ふーさんは話せませんが、たとえを書いて一緒に遊びます。';
     $('addNpc').disabled = n >= MAX_SEATS;
-    setHTML($('opts'), OPT_DEF.map(function (d) {
+    setHTML($('opts'), OPT_DEF.filter(function (d) { return !d.only || modeOf(v.opts) === d.only; }).map(function (d) {
       return '<div class="opt"><span>' + d.label + '</span><div class="seg">' + d.ch.map(function (c, i) {
         return '<button data-k="' + d.k + '" data-i="' + i + '" class="' + (v.opts[d.k] === c[0] ? 'on' : '') + '">' + c[1] + '</button>'; }).join('') + '</div></div>';
     }).join(''));
@@ -641,16 +780,20 @@
     $('lives').innerHTML = livesHtml(v);
     $('codeChip').textContent = v.code;
     // プレイヤー
+    var agreed = v.ready ? v.ready.agreed : [];
     setHTML($('players'), v.seats.map(function (s) {
-      return '<div class="pchip' + (s.sid === v.you ? ' me' : '') + (s.connected ? '' : ' off') + '" data-sid="' + s.sid + '">' + av(v, s.sid) + '<span>' + esc(s.name) + '</span>' +
-        (v.phase === 'talk' ? '<span class="cnt">🂠' + s.left + '</span>' : '') + '</div>';
+      var tail = v.mode === 'reveal' ? (v.ready && s.kind !== 'npc' ? (agreed.indexOf(s.sid) >= 0 ? '<span class="okmark">✓</span>' : '<span class="cnt">…</span>') : '')
+        : (v.phase === 'talk' ? '<span class="cnt">🂠' + s.left + '</span>' : '');
+      return '<div class="pchip' + (s.sid === v.you ? ' me' : '') + (s.connected ? '' : ' off') + '" data-sid="' + s.sid + '">' + av(v, s.sid) + '<span>' + esc(s.name) + '</span>' + tail + '</div>';
     }).join(''));
     var theme = v.phase === 'theme';
     $('themePick').style.display = theme ? '' : 'none';
     $('talk').style.display = theme ? 'none' : '';
     $('boardWrap').style.display = theme ? 'none' : '';
     if (theme) renderCands(v); else $('themeBox').innerHTML = themeHtml(v.theme);
-    renderMine(v);
+    var rvl = v.phase === 'reveal';
+    $('mineTtl').style.display = $('mine').style.display = rvl ? 'none' : '';
+    if (!rvl) renderMine(v);
     if (!theme) renderBoard(v);
     renderAction(v);
   }
@@ -682,8 +825,9 @@
     var keyNow = v.gid + ':' + v.stage + ':' + v.phase + ':' + v.hand.map(function (c) { return c.cid; }).join(',');
     if (box.dataset.key !== keyNow) {
       box.dataset.key = keyNow;
+      var one = v.mode !== 'reveal';
       box.innerHTML = v.hand.length ? v.hand.map(function (c, i) {
-        return '<div class="mycard" data-cid="' + c.cid + '"><div class="bignum' + (i === 0 ? ' next' : '') + '">' + c.n + '<small>' + (i === 0 && v.hand.length > 1 ? 'つぎに出す' : 'あなたの数字') + '</small></div>' +
+        return '<div class="mycard" data-cid="' + c.cid + '"><div class="bignum' + (i === 0 && one ? ' next' : '') + '">' + c.n + '<small>' + (one && i === 0 && v.hand.length > 1 ? 'つぎに出す' : 'あなたの数字') + '</small></div>' +
           '<div class="ex">' + (talk ? '<label>たとえ（数字はNG）</label><div class="exrow"><input maxlength="30" placeholder="例：' + esc(exampleFor(v.theme, c.n)) + '" data-cid="' + c.cid + '"><button data-save="' + c.cid + '">OK</button></div><div class="exstate"></div>'
             : '<label>お題が決まったら、この数字をたとえよう</label>') + '</div></div>';
       }).join('') : '<div class="done">' + (talk ? '✨ あなたの札はぜんぶ出しました。みんなを応援しよう！' : '') + '</div>';
@@ -692,7 +836,7 @@
       var card = box.querySelector('.mycard[data-cid="' + c.cid + '"]'); if (!card) return;
       var inp = card.querySelector('input'), st = card.querySelector('.exstate');
       if (inp && document.activeElement !== inp && !inp.dataset.dirty) inp.value = c.expr || '';
-      if (st) st.textContent = c.expr ? '✓ みんなに見えています' : 'まだ書いていません';
+      if (st) st.textContent = c.expr ? '✓ みんなに見えています' + (v.mode === 'reveal' ? '（決定まで書きかえOK）' : '') : 'まだ書いていません';
     });
   }
   function exampleFor(theme, n) {
@@ -715,6 +859,10 @@
   // ならべボード
   function cardOf(v, cid) { return v.cards.filter(function (c) { return c.cid === cid; })[0]; }
   function renderBoard(v) {
+    var rv = v.reveal;
+    $('field').style.display = v.mode === 'reveal' ? 'none' : '';
+    $('axisR').textContent = rv ? 'めくる順（上から）' : 'みんなの予想順';
+    $('boardHint').textContent = rv ? '上（小さい側）から1枚ずつめくります' : v.mode === 'reveal' ? '全員の札を並べて「この順番で決定」' : '≡をドラッグ／▲▼で並べかえ（みんなで共有）';
     var field = v.field.map(function (cid) { return cardOf(v, cid); });
     var aside = v.aside.map(function (cid) { return cardOf(v, cid); });
     var fieldChanged = setHTML($('field'), '<span class="lbl">場：</span>' + (field.length ? field.map(function (c, i) {
@@ -723,11 +871,28 @@
       (aside.length ? '<span class="lbl" style="margin-left:6px">よけた：</span>' + aside.map(function (c) { return '<span class="tile aside">' + c.n + '</span>'; }).join('') : ''));
     var popped = v.ev && v.ev.type === 'play' && v.ev.card ? v.ev.card.cid : null;
     if (popped && (fieldChanged || $('field').dataset.pop !== String(v.ev.id))) { $('field').dataset.pop = v.ev.id; var t = $('field').querySelector('[data-f="' + popped + '"]'); if (t) t.classList.add('pop'); }
-    if (dragging) { pendingView = v; return; }   // ドラッグ中は並びを上書きしない
+    if (dragging && !rv) { pendingView = v; return; }   // ドラッグ中は並びを上書きしない
+    if (dragging && rv) { dragging.chip.classList.remove('dragging'); dragging = null; }
     var mineN = {}; v.hand.forEach(function (c) { mineN[c.cid] = c.n; });
     var prev = ($('chips').dataset.order || '').split(',');
     var moves = {};
     if ($('chips').dataset.order !== v.board.join(',')) v.board.forEach(function (id, i) { if (prev.length > 1 && prev.indexOf(id) !== i && prev.indexOf(id) >= 0 && v.boardBy !== v.you) moves[id] = 1; });
+    if (rv) {   // めくり中：並びは固定。上から1枚ずつ「？」がめくれる
+      setHTML($('chips'), v.board.map(function (id) {
+        if (id === 'ref') return '<div class="chip ref locked" data-id="ref"><span class="flipn refn">' + v.ref.n + '</span><span class="who"><span>📏 ものさし</span></span><span class="say' + (v.ref.expr ? '' : ' none') + '">' + (v.ref.expr ? '『' + esc(v.ref.expr) + '』' : '（たとえなし）') + '</span></div>';
+        var c = cardOf(v, id); if (!c) return '';
+        var s = seatOf(v, c.by), open = 'n' in c, cls = open ? (c.state === 'miss' ? ' miss' : ' ok') : (id === rv.next ? ' next' : '');
+        if (id === rv.last) cls += ' flip';
+        return '<div class="chip locked' + (c.by === v.you ? ' me' : '') + cls + '" data-id="' + id + '"><span class="flipn">' + (open ? c.n : '？') + '</span><span class="who">' + av(v, c.by) + '<span>' + esc(s.kind === 'npc' ? s.name.replace('🐻', '') : s.name) + '</span></span>' +
+          '<span class="say' + (c.expr ? '' : ' none') + '">' + (c.expr ? '『' + esc(c.expr) + '』' : '（たとえなし）') + '</span>' + (open && c.state === 'miss' ? '<span class="missmark">ミス</span>' : '') + '</div>';
+      }).join(''));
+      $('chips').dataset.order = v.board.join(',');
+      $('boardBy').textContent = 'めくった ' + rv.shown + ' / ' + rv.total + (rv.misses ? '　ミス ' + rv.misses : '');
+      $('refBox').innerHTML = '';
+      var nx = rv.next && $('chips').querySelector('.chip[data-id="' + rv.next + '"]');
+      if (nx && nx.scrollIntoView) try { nx.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'auto' : 'smooth' }); } catch (e) {}
+      return;
+    }
     setHTML($('chips'), v.board.map(function (id, i) {
       var moved = !!moves[id];
       if (id === 'ref') return '<div class="chip ref' + (moved ? ' moved' : '') + '" data-id="ref"><span class="grip">≡</span><span class="who"><span class="tile" style="font-size:14px;padding:2px 6px;background:var(--sun);color:#5a3b00;box-shadow:none">' + v.ref.n + '</span><span>ものさし</span></span>' +
@@ -800,6 +965,13 @@
 
   // 下部アクション
   function renderAction(v) {
+    // ホストへの「ロビーに戻りたい」通知
+    var lr = $('lobbyReq');
+    if (host && v.lobbyReq && v.phase !== 'lobby') { setHTML(lr, '<span>🙋 ' + esc(seatOf(v, v.lobbyReq.by).name) + '「ロビーに戻りたい」</span><button data-lr="abort">中断してロビーへ</button><button data-lr="no" class="ghost">とじる</button>'); lr.classList.add('show'); }
+    else lr.classList.remove('show');
+    setTimeout(placeFeed, 0);   // アクションバーの高さが変わったら、ふーさんのひとことも一緒に上へ
+    if (v.mode === 'reveal') return renderActionReveal(v);
+    $('proposeBtn').style.display = 'none'; $('readyck').classList.remove('show');
     var talk = v.phase === 'talk', p = v.pending;
     $('playBtn').style.display = talk && !p ? '' : 'none';
     $('pending').classList.toggle('show', !!(talk && p));
@@ -826,6 +998,39 @@
     if (off) { hb.innerHTML = '<span>⚠️ ' + esc(off.name) + 'の接続が切れています</span><button data-proxy="' + off.sid + '">代わりにいちばん小さい札を出す</button>'; hb.classList.add('show'); }
     else hb.classList.remove('show');
   }
+  function renderActionReveal(v) {
+    var talk = v.phase === 'talk', r = v.ready, rv = v.reveal;
+    $('playBtn').style.display = 'none'; $('pending').classList.remove('show'); $('hostbar').classList.remove('show');
+    $('proposeBtn').style.display = talk && !r ? '' : 'none';
+    $('readyck').classList.toggle('show', !!(talk && r));
+    var mineMissing = v.hand.some(function (c) { return !c.expr; });
+    if (v.phase === 'theme') $('status').innerHTML = host ? 'お題を選んでください（自作もOK）' : 'お題に👍で投票しよう。ホストが決めます';
+    else if (rv) $('status').innerHTML = rv.shown < rv.total ? '<span class="drum">ドキドキ…</span> めくっています <b>' + rv.shown + '</b> / ' + rv.total + (rv.top ? '　いまの最大 <b>' + rv.top + '</b>' : '') : '全部めくりました！';
+    else if (r) $('status').textContent = '';
+    else $('status').innerHTML = mineMissing ? 'まずは数字を<b>たとえ</b>で書いてみよう' : v.block ? esc(v.block) : 'みんなで並べて、納得したら決定！';
+    $('proposeBtn').disabled = !!v.block;
+    if (talk && r) {
+      var need = r.need, me = r.agreed.indexOf(v.you) >= 0, isHuman = need.indexOf(v.you) >= 0;
+      var who = r.by === v.you ? 'あなた' : esc(seatOf(v, r.by).name);
+      var list = need.map(function (sid) { var ok = r.agreed.indexOf(sid) >= 0; return '<span class="rk' + (ok ? ' on' : '') + '">' + (ok ? '✓ ' : '… ') + esc(seatOf(v, sid).name) + '</span>'; }).join('') +
+        v.seats.filter(function (s) { return s.kind === 'npc'; }).map(function (s) { return '<span class="rk on npc">✓ ' + esc(s.name) + '</span>'; }).join('');
+      var note = r.reset ? '<div class="rnote">🔀 ' + esc(seatOf(v, r.reset.by).name) + 'が' + esc(r.reset.what) + 'ので、同意をやり直し</div>' : '';
+      setHTML($('readyck'), '<div class="rt">🙋 ' + who + 'が「この順番で決定」を提案　<b>' + r.agreed.length + ' / ' + need.length + '</b>人OK</div>' + note + '<div class="rks">' + list + '</div>' +
+        '<div class="rbtns">' + (isHuman && !me ? '<button class="agree" data-agree="' + r.id + ':' + r.ver + '">👍 OK！この順番で</button>' : '<span class="rwait">みんなのOKを待っています<span class="dots"></span></span>') +
+        '<button class="hold" data-hold="1">✋ まって</button></div>');
+    }
+  }
+  $('proposeBtn').onclick = function () { send({ t: 'propose' }); };
+  $('readyck').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.agree) { var a = b.dataset.agree.split(':'); send({ t: 'agree', rid: +a[0], ver: +a[1] }); }
+    if (b.dataset.hold) send({ t: 'hold' });
+  });
+  $('lobbyReq').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-lr]'); if (!b) return;
+    if (b.dataset.lr === 'no') return send({ t: 'lobbyReqDismiss' });
+    confirmBox('中断してロビーに戻りますか？', 'いまのゲームを終了して、全員をこの部屋のロビーに戻します。部屋コード・参加者・ふーさん・設定はそのままです。', '中断してロビーへ', function () { send({ t: 'abort' }); });
+  });
   setInterval(tickPending, 200);
   function tickPending() { if (!lastView || !lastView.pending) return; $('pendCd').textContent = Math.max(0, Math.ceil((pendDeadline - Date.now()) / 1000)); }
   $('hostbar').addEventListener('click', function (e) { var b = e.target.closest('button[data-proxy]'); if (b) confirmBox('代わりに出しますか？', '切断した人の手元でいちばん小さい札を出します（数字はホストにも出すまで見えません）。', '出す', function () { send({ t: 'proxy', sid: +b.dataset.proxy }); }); });
@@ -887,6 +1092,23 @@
         var lv = $('lives'); lv.classList.remove('hit'); void lv.offsetWidth; lv.classList.add('hit');
         clearTimeout(mkT); mkT = setTimeout(function () { overlay('mistake', false); }, TURBO ? 2500 : 7000);
       } else { nice('ナイス！ ' + ev.card.n + (ev.card.expr ? '『' + ev.card.expr + '』' : '')); vibrate(30); }
+    } else if (ev.type === 'propose') {
+      if (ev.by !== v.you) vibrate(40);   // 提案は下の同意チェック欄に出る（トーストで画面を隠さない）
+    } else if (ev.type === 'hold') {
+      toast('✋ ' + seatOf(v, ev.by).name + 'が「まって！」');
+    } else if (ev.type === 'readyReset') {
+      if (ev.by !== v.you) vibrate(20);
+    } else if (ev.type === 'revealStart') {
+      nice('🔒 この順番で決定！');
+    } else if (ev.type === 'flip') {
+      if (ev.miss) {
+        var f = $('niceFx'); f.classList.add('bad'); nice('💥 ミス！ ❤️-1'); setTimeout(function () { f.classList.remove('bad'); }, 1700);
+        var lv2 = $('lives'); lv2.classList.remove('hit'); void lv2.offsetWidth; lv2.classList.add('hit'); vibrate([80, 50, 120]);
+      } else vibrate(15);
+    } else if (ev.type === 'lobbyReq') {
+      if (host) toast('🙋 ' + seatOf(v, ev.by).name + '「ロビーに戻りたい」');
+    } else if (ev.type === 'toLobby') {
+      if (ev.msg && v.phase === 'lobby') toast(ev.msg.replace(/^⏸️ /, '⏸️ ') + (host ? '' : '。新しいゲームを待っています'));
     } else if (ev.type === 'wait') {
       toast('✋ ' + seatOf(v, ev.by).name + (ev.by === ev.target ? 'が出すのをやめました' : 'が「ちょっと待って！」'));
     } else if (ev.type === 'stage' && v.stage > 1) {
@@ -905,7 +1127,11 @@
     $('rText').innerHTML = '残りライフ ' + livesHtml(v) + (h.mistakes ? '　ミス ' + h.mistakes + '回' : '　ノーミス！');
     $('rTheme').innerHTML = themeHtml(h.theme);
     var key = v.gid + ':' + h.stage + ':' + v.history.length;
-    if (revealKey !== key) {
+    $('rOrderLbl').textContent = h.mode === 'reveal' ? '決定した順（上から）' : '小さい順';
+    if (h.mode === 'reveal') {
+      $('rText').innerHTML = '残りライフ ' + livesHtml(v) + (h.mistakes ? '　ミス ' + h.mistakes + '枚（❤️-' + (h.livesBefore - h.lives) + '）' : '　ノーミス！ぴったり！');
+      if (revealKey !== key) { revealKey = key; renderRevealResult(v, h); if (!over || won) confetti(won ? 70 : 30); $('result').querySelector('.col').scrollTop = 0; }
+    } else if (revealKey !== key) {
       revealKey = key;
       var rows = h.cards.slice();
       if (h.ref) rows.push({ by: 0, n: h.ref.n, expr: h.ref.expr, state: 'ref' });
@@ -931,6 +1157,18 @@
     $('nextBtn').textContent = over ? '最終結果を見る' : '次のステージへ（1人' + (h.stage + 1) + '枚）';
     $('rWait').innerHTML = 'ホストが進めるのを待っています<span class="dots"></span>';
   }
+  function renderRevealResult(v, h) {
+    var rows = h.cards.slice();
+    if (h.ref && h.ref.at >= 0) rows.splice(Math.min(h.ref.at, rows.length), 0, { by: 0, n: h.ref.n, expr: h.ref.expr, state: 'ref' });
+    $('revList').innerHTML = rows.map(function (c) {
+      var who = c.state === 'ref' ? '📏 ものさしカード' : esc(seatOf(v, c.by).name);
+      var badge = c.state === 'ok' ? '<span class="badge">OK</span>' : c.state === 'miss' ? '<span class="badge x">ミス（最大' + c.top + 'より小さい）</span>' : '';
+      if (c.wow) badge = '<span class="badge wow">えっ!? 予想' + (c.guess + 1) + '番目→実際' + (c.rank + 1) + '番目</span>' + badge;
+      return '<div class="rev ' + (c.state === 'miss' ? 'aside miss' : c.state) + (c.wow ? ' wowrow' : '') + '"><div class="n">' + c.n + '</div><div class="tx"><div class="w' + (c.expr ? '' : ' none') + '">' + (c.expr ? '『' + esc(c.expr) + '』' : '（たとえなし）') + '</div><div class="by">' + (c.state === 'ref' ? '' : av(v, c.by)) + who + badge + '</div></div></div>';
+    }).join('');
+    var els = $('revList').querySelectorAll('.rev'), gap = TURBO ? 40 : 140;
+    [].forEach.call(els, function (el, i) { setTimeout(function () { el.classList.add('show'); }, 100 + i * gap); });
+  }
   $('nextBtn').onclick = function () { send({ t: 'next' }); };
 
   function renderFinal(v) {
@@ -944,9 +1182,9 @@
     var mist = H.reduce(function (a, h) { return a + h.mistakes; }, 0);
     $('fStats').innerHTML = 'クリアしたステージ：<b>' + cleared + '</b> / ' + (v.maxStage >= 99 ? '∞' : v.maxStage) + '<br>ミスの回数：<b>' + mist + '</b>　残りライフ：' + livesHtml(v) + '<br>プレイヤー：' + v.seats.map(function (s) { return esc(s.name); }).join('・');
     $('fLog').innerHTML = H.map(function (h) {
-      var rows = h.cards.slice().sort(function (a, b) { return a.n - b.n; });
+      var rows = h.mode === 'reveal' ? h.cards.slice() : h.cards.slice().sort(function (a, b) { return a.n - b.n; });
       return '<div class="stagelog"><div class="h">ステージ' + h.stage + (h.cleared ? ' ✅' : ' ❌') + '「' + esc(h.theme.t) + '」</div><div class="l">' +
-        rows.map(function (c) { return '<b>' + c.n + '</b> ' + esc(seatOf(v, c.by).name) + (c.expr ? '『' + esc(c.expr) + '』' : '') + (c.state === 'aside' ? '（よけた）' : c.state === 'hand' ? '（残り）' : ''); }).join('<br>') + '</div></div>';
+        rows.map(function (c) { return '<b>' + c.n + '</b> ' + esc(seatOf(v, c.by).name) + (c.expr ? '『' + esc(c.expr) + '』' : '') + (c.state === 'aside' ? '（よけた）' : c.state === 'hand' ? '（残り）' : c.state === 'miss' ? ' ❌ミス' : ''); }).join('<br>') + '</div></div>';
     }).join('');
     if (finalKey !== key) { finalKey = key; if (won) confetti(90); $('final').querySelector('.col').scrollTop = 0; }
     $('leaveBtn2').textContent = host ? '部屋を閉じる' : '部屋を出る';
