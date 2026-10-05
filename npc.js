@@ -65,7 +65,8 @@
     var p = lowestChance(info.perceived != null ? info.perceived : info.n, info.top, info.others);
     if (info.ahead === 0) p = p * 0.6 + 0.4;                 // みんなが自分を先頭に並べている → 出そう
     else if (info.ahead > 0) p = p * Math.pow(0.6, info.ahead); // 前に誰かいる → 待とう
-    var thr = clamp(0.75 - info.idleSec / 90, 0.1, 0.75) + 0.15 * (info.waited || 0);
+    // 待つほどハードルが下がり、最後は必ず出す（高い札だけが残っても止まらない）。残りがふーさんだけなら早めに
+    var thr = clamp(0.75 - info.idleSec / (info.onlyNpcs ? 30 : 90), 0, 0.75) + 0.15 * (info.waited || 0);
     return { p: p, thr: thr, go: p >= thr };
   }
   function perceive(n, level, rng) { var L = lv(level); return L.perceiveSd ? clamp(Math.round(n + gauss(rng || Math.random) * L.perceiveSd), 1, 100) : n; }

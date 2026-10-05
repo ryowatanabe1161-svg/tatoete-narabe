@@ -20,9 +20,10 @@
   var LS_ID = 'tn-client-id', LS_NAME = 'tn-name', LS_HOST = 'tn-host-room', SS_CLIENT = 'tn-joined';
   var REACTS = ['👍', '🤔', '😱', '🙏', '😂', '⏳'];
   var AVC = ['#ff6b5b', '#17a89b', '#f2a516', '#6c7bff', '#e05aa8', '#3fae4f', '#9a6bd8', '#ff8f3d', '#2c9bd6', '#b8860b'];
-  var DEFAULT_OPTS = { mode: 'reveal', stages: 3, ref: true, wait: 3, npc: 'normal' };
+  var DEFAULT_OPTS = { mode: 'reveal', cards: 'grow', stages: 3, ref: true, wait: 3, npc: 'normal' };
   var OPT_DEF = [
     { k: 'mode', label: '遊び方', ch: [['reveal', '一斉オープン（標準）'], ['one', '1枚ずつ出す']] },
+    { k: 'cards', label: '1人の札の数', ch: [['grow', 'ふえていく'], ['one', 'ずっと1枚']] },
     { k: 'stages', label: 'ステージ数', ch: [[3, '3（公式）'], [5, '5'], [99, 'どこまでも']] },
     { k: 'ref', label: 'ステージ3のものさしカード', ch: [[true, 'あり'], [false, 'なし']] },
     { k: 'wait', label: '「ちょっと待って！」タイム', ch: [[3, '3秒'], [5, '5秒'], [0, 'なし']], only: 'one' },
@@ -198,7 +199,7 @@
 
   // ---- 進行 ----
   function rngFor(salt) { return Q.get('seed') ? L.rngFrom(+Q.get('seed') * 7919 + salt) : Math.random; }
-  function debugDeck(stage) {   // テスト用：?deck=10,20,30/5,60,12,70 （ステージごとに / 区切り。席順に stage 枚ずつ配る）
+  function debugDeck(stage) {   // テスト用：?deck=10,20,30/5,60,12,70 （ステージごとに / 区切り。席順に その回の枚数ずつ配る）
     var d = Q.get('deck'); if (!d) return null;
     var part = d.split('/')[stage - 1]; if (!part) return null;
     var seen = {}, out = [];
@@ -210,12 +211,12 @@
     var R = host.room;
     if (R.seats.length < 2) return toast('2人以上で遊べます（ふーさんを呼んでもOK）');
     var pids = R.seats.map(function (s) { return s.sid; });
-    R.G = L.newGame(pids, { maxStage: R.opts.stages, ref: R.opts.ref });
+    R.G = L.newGame(pids, { maxStage: R.opts.stages, ref: R.opts.ref, cards: R.opts.cards });
     R.G.mode = modeOf(R.opts);
     R.gid++; R.G.gid = R.gid; R.lobbyReq = null;
     R.history = []; R.log = []; R.reacts = [];
     L.startStage(R.G, rngFor(R.gid * 100 + 1), debugDeck(1));
-    addLog('🎉 ゲーム開始！ ステージ1（1人1枚）');
+    addLog('🎉 ゲーム開始！ ステージ1（1人1枚' + (R.G.oneCard ? '・ずっと1枚' : '') + '）');
     enterTheme();
   }
   function drawCands(n) {
@@ -329,7 +330,7 @@
           if (!isHostSeat(seat) || R.phase !== 'result') return;
           if (G.phase === 'cleared') {
             var r = L.nextStage(G, rngFor(R.gid * 100 + G.stage + 1), debugDeck(G.stage + 1));
-            addLog('➡️ ステージ' + G.stage + '（1人' + G.stage + '枚）' + (r.gained ? '　❤️+1' : ''));
+            addLog('➡️ ステージ' + G.stage + '（1人' + L.handSize(G) + '枚）' + (r.gained ? '　❤️+1' : ''));
             R.lifeGain = r.gained;
             return enterTheme();
           }
@@ -538,14 +539,14 @@
     if (G.mode !== 'reveal' && NPC_PLAY && humansReady && !R.pending && now - R.idleFrom > (TURBO ? 1200 : 9000)) {
       var top = G.field.length ? G.field[G.field.length - 1].n : 0, total = L.handCards(G).length;
       var idleSec = (now - R.idleFrom) / 1000 / k;
-      var ready = null;
+      var ready = null, onlyNpcs = L.handCards(G).every(function (c) { var st = seatBySid(c.by); return !st || st.kind === 'npc'; });
       npcs.forEach(function (s) {
         var hand = L.handOf(G, s.sid), m = host.npc[s.sid]; if (!hand.length || !m || !hand[0].expr) return;
         var c = hand[0];
         if (m.perceived[c.cid] == null) m.perceived[c.cid] = NPC.perceive(c.n, level, Math.random);
         var ahead = null;
         if (R.boardHuman) { var pos = R.board.indexOf(c.cid); ahead = R.board.slice(0, pos).filter(function (x) { return x !== 'ref' && G.cards[x] && G.cards[x].by !== s.sid; }).length; }
-        var d = NPC.wantsPlay({ n: c.n, perceived: m.perceived[c.cid], top: top, others: total - hand.length, idleSec: idleSec, ahead: ahead, waited: R.waited[s.sid] || 0 });
+        var d = NPC.wantsPlay({ n: c.n, perceived: m.perceived[c.cid], top: top, others: total - hand.length, idleSec: idleSec, ahead: ahead, waited: R.waited[s.sid] || 0, onlyNpcs: onlyNpcs });
         if (d.go) { if (!m.decideAt) m.decideAt = now + rnd(1200, 3500) * k; if (now >= m.decideAt && (!ready || d.p > ready.p)) ready = { s: s, c: c, p: d.p }; }
         else m.decideAt = 0;
       });
@@ -563,7 +564,7 @@
     var reveal = R.phase === 'result' || R.phase === 'final';
     var rv = R.phase === 'reveal' ? R.reveal : null, shown = {};   // めくり中：めくった札だけ数字を送る
     if (rv) rv.steps.slice(0, rv.shown).forEach(function (x) { shown[x.cid] = x; });
-    v.gid = R.gid; v.mode = G.mode || 'one'; v.stage = G.stage; v.maxStage = G.maxStage; v.maxLives = L.MAX_LIVES; v.lifeGain = R.lifeGain || 0;
+    v.gid = R.gid; v.mode = G.mode || 'one'; v.stage = G.stage; v.maxStage = G.maxStage; v.handSize = L.handSize(G); v.oneCard = !!G.oneCard; v.maxLives = L.MAX_LIVES; v.lifeGain = R.lifeGain || 0;
     v.lives = rv ? (rv.shown ? rv.steps[rv.shown - 1].livesAfter : rv.livesBefore) : G.lives;   // ライフも、めくった分だけ減らして見せる
     v.theme = R.theme; v.cands = R.cands; v.votes = R.votes;
     v.seats.forEach(function (s) { s.left = L.handOf(G, s.sid).length; });
@@ -1112,7 +1113,7 @@
     } else if (ev.type === 'wait') {
       toast('✋ ' + seatOf(v, ev.by).name + (ev.by === ev.target ? 'が出すのをやめました' : 'が「ちょっと待って！」'));
     } else if (ev.type === 'stage' && v.stage > 1) {
-      toast('ステージ' + v.stage + '！ 1人' + v.stage + '枚' + (v.lifeGain ? '・ライフ+1' : ''));
+      toast('ステージ' + v.stage + '！ 1人' + (v.handSize || v.stage) + '枚' + (v.lifeGain ? '・ライフ+1' : ''));
     }
   }
   $('mkClose').onclick = function () { overlay('mistake', false); };
@@ -1154,7 +1155,7 @@
     }
     var two = v.seats.length === 2;
     $('rNote').textContent = over ? '' : (two ? '2人プレイなのでライフは回復しません。' : v.lives < v.maxLives ? '次のステージの前にライフが1つ回復します。' : 'ライフは満タン（最大3）です。') + ' 次は1人' + (h.stage + 1) + '枚！';
-    $('nextBtn').textContent = over ? '最終結果を見る' : '次のステージへ（1人' + (h.stage + 1) + '枚）';
+    $('nextBtn').textContent = over ? '最終結果を見る' : '次のステージへ（1人' + (v.oneCard ? 1 : h.stage + 1) + '枚）';
     $('rWait').innerHTML = 'ホストが進めるのを待っています<span class="dots"></span>';
   }
   function renderRevealResult(v, h) {

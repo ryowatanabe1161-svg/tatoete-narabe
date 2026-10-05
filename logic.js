@@ -1,5 +1,5 @@
 /* たとえてナラベ！ ― ルールエンジン（ブラウザ / Node 共通）
- * 協力モード：数字 1〜100（各1枚）。ステージnでは各自n枚。ライフ3（共有・上限3）。
+ * 協力モード：数字 1〜100（各1枚）。ステージnでは各自n枚（cards:'one' なら毎ステージ各自1枚）。ライフ3（共有・上限3）。
  * 遊び方は2つ：
  *  - 一斉オープン（標準）：全員の札をボードに並べて「この順番で決定」→ 上（小さい側）から1枚ずつめくる。
  *    それまでにめくった最大の数字より小さい札は「ミス」で、1枚につきライフ1を失う（最後までめくる）。ライフが残ればステージクリア。
@@ -13,6 +13,7 @@
   function rngFrom(seed) { var a = (seed >>> 0) || 1; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   function shuffle(a, rng) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(rng() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
   function stageCap(n) { return Math.max(1, Math.floor(99 / n)); }       // 1〜100で配れる最大ステージ（ヒント1枚ぶん残す）
+  function handSize(G) { return G.oneCard ? 1 : G.stage; }                // そのステージで1人に配る枚数
   function sanitizeExpr(text) {
     var s = String(text == null ? '' : text).replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 30);
     if (/[0-9０-９]/.test(s)) throw new Error('数字は使えません（ことばでたとえてね）');
@@ -22,7 +23,7 @@
   function newGame(pids, opts) {
     opts = opts || {};
     if (pids.length < 2 || pids.length > 10) throw new Error('2〜10人で遊べます');
-    var G = { pids: pids.slice(), lives: MAX_LIVES, stage: 0, maxStage: Math.min(opts.maxStage || 3, stageCap(pids.length)), useRef: opts.ref !== false,
+    var G = { pids: pids.slice(), lives: MAX_LIVES, stage: 0, oneCard: opts.cards === 'one', maxStage: Math.min(opts.maxStage || 3, opts.cards === 'one' ? 99 : stageCap(pids.length)), useRef: opts.ref !== false,
       phase: 'idle', cards: {}, field: [], aside: [], ref: null, history: [], seq: 0, end: null, mistakesTotal: 0, stagesCleared: 0 };
     return G;
   }
@@ -33,7 +34,7 @@
     var deck = presetDeck ? presetDeck.slice() : shuffle(range(1, 100), rng);
     G.cards = {}; G.field = []; G.aside = []; G.ref = null; G.stageMistakes = [];
     G.pids.forEach(function (pid) {
-      for (var k = 0; k < G.stage; k++) { var n = deck.shift(); var cid = newCid(G, rng); G.cards[cid] = { cid: cid, n: n, by: pid, expr: '', state: 'hand' }; }
+      for (var k = 0, hs = handSize(G); k < hs; k++) { var n = deck.shift(); var cid = newCid(G, rng); G.cards[cid] = { cid: cid, n: n, by: pid, expr: '', state: 'hand' }; }
     });
     if (G.useRef && G.stage === 3) G.ref = { n: deck.shift(), expr: '' };
     G.phase = 'play';
@@ -114,7 +115,7 @@
     return { gained: gained };
   }
 
-  var api = { MAX_LIVES: MAX_LIVES, rngFrom: rngFrom, shuffle: shuffle, stageCap: stageCap, sanitizeExpr: sanitizeExpr, newGame: newGame, startStage: startStage,
+  var api = { MAX_LIVES: MAX_LIVES, rngFrom: rngFrom, shuffle: shuffle, stageCap: stageCap, handSize: handSize, sanitizeExpr: sanitizeExpr, newGame: newGame, startStage: startStage,
     handOf: handOf, handCards: handCards, setExpr: setExpr, setRefExpr: setRefExpr, play: play, revealOrder: revealOrder, biggestSurprise: biggestSurprise, cardsOf: cardsOf, nextStage: nextStage, willRecover: willRecover };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.TatoeGame = api;
 })(this);
